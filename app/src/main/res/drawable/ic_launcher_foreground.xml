@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- skaner burchaklari -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.2" android:strokeLineCap="round"
+        android:pathData="M30,40 L30,32 Q30,30 32,30 L40,30 M68,30 L76,30 Q78,30 78,32 L78,40 M78,68 L78,76 Q78,78 76,78 L68,78 M40,78 L32,78 Q30,78 30,76 L30,68" />
+    <!-- ochiq kitob -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M37,42 Q46,39 53,43 L53,68 Q46,64.5 37,67 Z" />
+    <path android:fillColor="#FFE0E7FF"
+        android:pathData="M55,43 Q62,39 71,42 L71,67 Q62,64.5 55,68 Z" />
+    <path android:strokeColor="#FF4F46E5" android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M41,48 L49,48 M41,52.5 L49,52.5 M41,57 L47,57 M59,48 L67,48 M59,52.5 L67,52.5 M59,57 L65,57" />
+</vector>
