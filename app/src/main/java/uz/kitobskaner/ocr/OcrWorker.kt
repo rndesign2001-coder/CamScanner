@@ -66,6 +66,8 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         val done = AtomicInteger(0)
         val queueLock = Mutex()
         val queue = ArrayDeque(todo)
+        val attempted = HashSet<String>(todo)
+        val total = AtomicInteger(todo.size)
         val recognizer = PageRecognizer(applicationContext)
         val dispatcher = Dispatchers.Default.limitedParallelism(workers)
 
@@ -76,7 +78,15 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                         while (true) {
                             ensureActive()
                             if (isStopped) break
-                            val pageId = queueLock.withLock { queue.removeFirstOrNull() } ?: break
+                            val pageId = queueLock.withLock {
+                                if (queue.isEmpty()) {
+                                    // ish davomida qo'shilgan yangi sahifalar
+                                    repo.get(projectId)?.pages
+                                        ?.filter { !it.ocrDone && it.id !in attempted }
+                                        ?.forEach { queue.addLast(it.id); total.incrementAndGet() }
+                                }
+                                queue.removeFirstOrNull()?.also { attempted += it }
+                            } ?: break
                             val current = repo.get(projectId) ?: break
                             if (current.pages.none { it.id == pageId && !it.ocrDone }) continue
                             val file = repo.pageFile(projectId, pageId)
@@ -91,8 +101,8 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                             }
                             if (result != null) repo.saveOcr(projectId, pageId, result)
                             val n = done.incrementAndGet()
-                            setProgress(workDataOf(KEY_DONE to n, KEY_TOTAL to todo.size))
-                            notifyProgress(n, todo.size)
+                            setProgress(workDataOf(KEY_DONE to n, KEY_TOTAL to total.get()))
+                            notifyProgress(n, total.get())
                         }
                     }
                 }
@@ -161,7 +171,7 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                 .addTag("ocr")
                 .build()
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(workName(projectId), ExistingWorkPolicy.KEEP, req)
+                .enqueueUniqueWork(workName(projectId), ExistingWorkPolicy.APPEND_OR_REPLACE, req)
         }
 
         fun cancel(context: Context, projectId: String) {
