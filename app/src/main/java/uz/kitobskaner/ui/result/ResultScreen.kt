@@ -232,7 +232,7 @@ fun ResultScreen(path: String, onClose: () -> Unit, onHome: () -> Unit, onCompre
                         .putExtra(Intent.EXTRA_STREAM, uz.kitobskaner.ui.components.fileUri(context, file))
                         .putExtra(Intent.EXTRA_SUBJECT, file.nameWithoutExtension)
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        .setSelector(Intent(Intent.ACTION_SENDTO).setData(Uri.parse("mailto:")))
+                    intent.selector = Intent(Intent.ACTION_SENDTO).setData(Uri.parse("mailto:"))
                     try {
                         context.startActivity(intent)
                     } catch (e: Exception) {

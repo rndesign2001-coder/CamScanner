@@ -377,7 +377,7 @@ fun ConfirmDialog(title: String, text: String?, confirm: String, destructive: Bo
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = text?.let { { Text(it) } },
+        text = if (text != null) ({ Text(text) }) else null,
         confirmButton = {
             TextButton(onClick = { onDismiss(); onConfirm() }) {
                 Text(confirm, color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
