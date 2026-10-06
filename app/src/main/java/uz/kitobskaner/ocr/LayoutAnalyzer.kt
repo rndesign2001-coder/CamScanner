@@ -41,13 +41,23 @@ object LayoutAnalyzer {
         val langs = language.split('+')
         val uzLatin = opts.fixUzbekApostrophe && langs.contains("uzb")
         val preferCyr = langs.firstOrNull()?.let { it == "rus" || it == "uzb_cyrl" } == true
+        val cyrLangs = langs.count { it == "rus" || it == "uzb_cyrl" }
+        // aralash yozuvli kitob tanlanmagan bo'lsa, begona yozuvdagi yolg'iz so'zlar xato hisoblanadi
+        val singleScript = cyrLangs == 0 || cyrLangs == langs.size || langs == listOf("rus", "eng") || langs == listOf("uzb_cyrl", "rus")
 
         // so'zlarni tozalash: aralash yozuv, 0→o, apostrof; shovqinni olib tashlash
         page.blocks.forEach { b ->
             b.pars.forEach { p ->
+                // tik (90° burilgan) yozuvlar — hoshiyadagi kolontitul, ular matnga aralashmasin
+                p.lines.removeAll { l -> isVertical(l) }
                 p.lines.forEach { l ->
+                    if (uzLatin) joinSplitApostrophes(l)
+                    detectBullet(l)
                     l.words.forEach { w -> w.text = TextCleaner.fixWord(w.text, preferCyr, uzLatin) }
                     l.words.removeAll { TextCleaner.isNoise(it.text, it.conf) }
+                    if (singleScript) l.words.removeAll { TextCleaner.isStrayScript(it.text, it.conf, cyrillicBook = preferCyr) }
+                    trimTrailingGarbage(l)
+                    l.refit()
                 }
                 // sahifa chetidagi (qo'shni varaq qoldig'i) tor, ishonchsiz satrlar
                 p.lines.removeAll { l ->
@@ -122,10 +132,91 @@ object LayoutAnalyzer {
         for (item in merged) {
             when (item) {
                 is Box -> items += LayoutItem.Image(item)
-                is Para -> items += LayoutItem.Text(classify(item, bodySize, colLeft, colRight, colW, colCenter))
+                is Para -> {
+                    val letters = item.lines.sumOf { l -> l.words.sumOf { w -> w.text.count { it.isLetter() } } }
+                    val conf = item.lines.flatMap { it.words }.map { it.conf }.average()
+                    // bitta-ikkita harfli yoki ishonchsiz qisqa qoldiqlar ("L", "- voy")
+                    if (letters < 3 || (letters < 8 && conf < 70)) continue
+                    items += LayoutItem.Text(classify(item, bodySize, colLeft, colRight, colW, colCenter))
+                }
             }
         }
         return LayoutResult(items, words)
+    }
+
+    /** "Payg “ambarimiz" → "Paygʻambarimiz", "ko "pincha" → "koʻpincha" (o'zbek lotin). */
+    private fun joinSplitApostrophes(l: HLine) {
+        val ws = l.words
+        var i = 0
+        while (i < ws.size - 1) {
+            val a = ws[i]
+            val b = ws[i + 1]
+            val last = a.text.lastOrNull()
+            val bt = b.text
+            if (last != null && last in "oOgG" && a.text.length >= 2 && bt.length >= 2 &&
+                bt[0] in "“\"'‘’`ʼ´ʻ" && bt[1].isLowerCase()
+            ) {
+                ws[i] = HWord(a.text + "ʻ" + bt.substring(1), Box(a.box.l, minOf(a.box.t, b.box.t), b.box.r, maxOf(a.box.b, b.box.b)), minOf(a.conf, b.conf)).also {
+                    it.bold = a.bold && b.bold; it.stroke = a.stroke
+                }
+                ws.removeAt(i + 1)
+            } else i++
+        }
+    }
+
+    private fun isVertical(l: HLine): Boolean {
+        if (l.words.isEmpty()) return true
+        if (l.box.h > l.box.w * 1.3f && l.words.sumOf { it.text.length } >= 2) return true
+        val tall = l.words.count { it.box.h > it.box.w * 1.6f && it.text.length >= 3 }
+        return tall * 2 > l.words.size
+    }
+
+    /**
+     * Satr boshidagi bezak belgisi: Tesseract uni "si:", "ik", "#4", "“i" kabi mayda
+     * ishonchsiz so'z sifatida o'qiydi. Olib tashlanadi va satr yangi band deb belgilanadi.
+     */
+    private fun detectBullet(l: HLine) {
+        val ws = l.words
+        if (ws.size < 2) return
+        val first = ws[0]
+        val next = ws[1]
+        val t = first.text
+        val nextStart = next.text.firstOrNull { it.isLetterOrDigit() } ?: return
+        // ✓ belgisi odatda "v", "V" yoki "Vv" bo'lib o'qiladi (o'zbek/rus tilida bunday so'z yo'q)
+        if (t in setOf("v", "V", "Vv", "vv", "✓", "✔", "√", "•", "●", "▪", "■", "*", "·")) {
+            ws.removeAt(0); l.bullet = true
+            return
+        }
+        val nextCap = nextStart.isUpperCase() || nextStart.isDigit()
+        if (!nextCap) return
+        if (t in setOf("-", "–", "—")) {
+            if (t !in setOf("-", "–", "—") || next.box.l - first.box.r > first.box.w) {
+                ws.removeAt(0); l.bullet = true
+            }
+            return
+        }
+        val letters = t.count { it.isLetter() }
+        val hasUpper = t.any { it.isUpperCase() }
+        val symbols = t.count { !it.isLetterOrDigit() }
+        val medianH = ws.map { it.box.h }.sorted()[ws.size / 2]
+        val oddShape = first.box.h > medianH * 1.15f || symbols > 0
+        if (letters <= 4 && !hasUpper && t.length <= 5 &&
+            (first.conf < 55 || (first.conf < 80 && oddShape))
+        ) {
+            ws.removeAt(0); l.bullet = true
+        }
+    }
+
+    /** Satr oxiridagi ishonchsiz bir-ikki belgili qoldiqlar ("i", "o.", "=", "—"). */
+    private fun trimTrailingGarbage(l: HLine) {
+        while (l.words.size > 1) {
+            val w = l.words.last()
+            val t = w.text
+            val alnum = t.count { it.isLetterOrDigit() }
+            if ((alnum <= 1 && t.length <= 2 && w.conf < 70) || (alnum == 0 && w.conf < 85 && t.length <= 3 && t != "..." && t != "…")) {
+                l.words.removeAt(l.words.size - 1)
+            } else break
+        }
     }
 
     private fun isEdgeNoise(l: HLine, page: HPage): Boolean {
@@ -152,6 +243,32 @@ object LayoutAnalyzer {
     }
 
     private fun splitParagraph(lines: List<HLine>, size: Float, colLeft: Float, colRight: Float, colW: Float): List<Para> {
+        // bezakli bandlar har doim alohida xatboshi
+        if (lines.size > 1 && lines.drop(1).any { it.bullet }) {
+            val out = ArrayList<Para>()
+            var cur = mutableListOf(lines[0])
+            for (l in lines.drop(1)) {
+                if (l.bullet) { out += splitParagraph(cur, size, colLeft, colRight, colW); cur = mutableListOf(l) } else cur += l
+            }
+            out += splitParagraph(cur, size, colLeft, colRight, colW)
+            return out
+        }
+        // sarlavhasimon satr (markazda, qisqa, katta harf yoki qalin) bilan oddiy matn chegarasi
+        if (lines.size > 1) {
+            val colCenter = (colLeft + colRight) / 2f
+            fun headingLike(l: HLine): Boolean {
+                val letters = l.words.sumOf { w -> w.text.count { it.isLetter() } }
+                val bold = l.words.isNotEmpty() && l.words.all { it.bold }
+                val upper = letters >= 3 && l.words.all { w -> w.text.filter { it.isLetter() }.all { it.isUpperCase() } }
+                val centeredShort = abs(l.box.cx - colCenter) < colW * 0.08f && l.box.w < colW * 0.7f
+                return centeredShort && (bold || upper) && l.words.size <= 8
+            }
+            val idx = (1 until lines.size).firstOrNull { headingLike(lines[it - 1]) != headingLike(lines[it]) }
+            if (idx != null) {
+                return splitParagraph(lines.subList(0, idx), size, colLeft, colRight, colW) +
+                    splitParagraph(lines.subList(idx, lines.size), size, colLeft, colRight, colW)
+            }
+        }
         val wide = lines.count { it.box.w >= colW * 0.6f } >= (lines.size + 1) / 2
         if (!wide || lines.size < 2) return listOf(Para(lines.toMutableList()))
         val leftRef = percentile(lines.map { it.box.l.toFloat() }, 0.3f)
@@ -175,6 +292,7 @@ object LayoutAnalyzer {
     private fun shouldMerge(a: Para, b: Para, size: Float, colLeft: Float, colRight: Float): Boolean {
         val last = a.lines.last()
         val first = b.lines.first()
+        if (first.bullet) return false
         val gap = first.box.t - last.box.b
         if (gap > size * 1.3f || gap < -size) return false
         if (abs(avgSize(a) - avgSize(b)) > size * 0.15f) return false
@@ -194,12 +312,19 @@ object LayoutAnalyzer {
         val letters = allWords.sumOf { w -> w.text.count { it.isLetter() } }
         val boldLetters = allWords.filter { it.bold }.sumOf { w -> w.text.count { it.isLetter() } }
         val allBold = letters > 0 && boldLetters >= letters * 0.85f
-        val centered = lines.all { abs(it.box.cx - colCenter) < colW * 0.07f && it.box.l > colLeft + colW * 0.06f }
+        val sameEdges = lines.size >= 2 &&
+            lines.maxOf { it.box.l } - lines.minOf { it.box.l } < colW * 0.02f &&
+            lines.maxOf { it.box.r } - lines.minOf { it.box.r } < colW * 0.02f
+        val centered = !sameEdges &&
+            lines.all {
+                abs(it.box.cx - colCenter) < colW * 0.07f && it.box.l > colLeft + colW * 0.06f && it.box.r < colRight - colW * 0.06f
+            }
         val upper = letters > 3 && text.filter { it.isLetter() }.all { it.isUpperCase() }
         val chapter = CHAPTER.matches(text.trim()) && allWords.size <= 8
+        val bullet = lines.first().bullet
 
         val big = size >= bodySize * 1.25f
-        val heading = lines.size <= 3 && allWords.size <= 16 && (
+        val heading = (!bullet || (centered && (upper || allBold))) && lines.size <= 3 && allWords.size <= 16 && (
             big ||
                 (allBold && (centered || lines.size == 1) && allWords.size <= 12) ||
                 (centered && upper && allWords.size <= 10) ||
@@ -213,7 +338,7 @@ object LayoutAnalyzer {
 
         val shortLines = lines.dropLast(1).count { it.box.r < colRight - colW * 0.18f }
         val capStarts = lines.count { l -> l.text.firstOrNull { it.isLetter() || it in "—–-" }?.let { it.isUpperCase() || it in "—–-" } == true }
-        val verse = lines.size >= 2 &&
+        val verse = !bullet && lines.size >= 2 &&
             shortLines >= max(1, ((lines.size - 1) * 0.7f).toInt()) &&
             capStarts >= lines.size * 0.6f && colW > 0
         if (verse) {
@@ -227,7 +352,12 @@ object LayoutAnalyzer {
             rightAligned -> Align.RIGHT
             else -> Align.JUSTIFY
         }
-        return TextBlock(BlockType.PARAGRAPH, buildSpans(lines, verse = false), align)
+        val spans = buildSpans(lines, verse = false)
+        return TextBlock(
+            BlockType.PARAGRAPH,
+            if (bullet) listOf(TextSpan("• ")) + spans else spans,
+            if (bullet && align == Align.CENTER) Align.JUSTIFY else align,
+        )
     }
 
     private class Token(var text: String, val bold: Boolean, val italic: Boolean, val sep: String)
@@ -258,6 +388,11 @@ object LayoutAnalyzer {
                 }
                 tokens += Token(w.text, w.bold, w.italic, sep)
             }
+        }
+        // qalin bo'laklar orasida (satr chegarasida ham) qolib ketgan yolg'iz so'z — qalin
+        for (i in 1 until tokens.size - 1) {
+            val t = tokens[i]
+            if (!t.bold && tokens[i - 1].bold && tokens[i + 1].bold) tokens[i] = Token(t.text, true, t.italic, t.sep)
         }
         val spans = ArrayList<TextSpan>()
         val sb = StringBuilder()

@@ -69,10 +69,15 @@ object BoldDetector {
                 else -> false
             }
         }
-        // qalin so'zlar orasida qolib ketgan qisqa so'z (va, и, of ...) ham qalin
+        // qalin so'zlar orasida qolib ketgan yolg'iz so'z ham qalin (o'lchov shovqini)
         for (i in 1 until n - 1) {
             val w = ws[i]
-            if (!w.bold && ws[i - 1].bold && ws[i + 1].bold && w.text.length <= 3) w.bold = true
+            if (!w.bold && ws[i - 1].bold && ws[i + 1].bold) w.bold = true
+        }
+        // oddiy so'zlar orasidagi yolg'iz, chegaraga yaqin "qalin" so'z — shovqin
+        for (i in 1 until n - 1) {
+            val w = ws[i]
+            if (w.bold && !ws[i - 1].bold && !ws[i + 1].bold && w.text.length <= 3) w.bold = false
         }
     }
 

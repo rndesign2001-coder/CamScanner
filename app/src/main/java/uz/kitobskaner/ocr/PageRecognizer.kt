@@ -75,7 +75,12 @@ class PageRecognizer(private val context: Context) {
         if (adaptive) {
             val pitch = ImageProcessing.linePitch(norm)
             if (pitch != null) {
-                val k = (TARGET_PITCH / pitch).coerceIn(0.5f, 2.6f)
+                // faqat aniq kichik (qadam < 40 px) yoki juda katta (> 110 px) matnda o'lcham o'zgartiriladi
+                val k = when {
+                    pitch < 40f -> (TARGET_PITCH / pitch).coerceAtMost(2.6f)
+                    pitch > 110f -> (TARGET_PITCH / pitch).coerceAtLeast(0.5f)
+                    else -> 1f
+                }
                 val longSide = max(bmp.width, bmp.height)
                 val target = (longSide * k).toInt().coerceIn(1200, MAX_ADAPTIVE_SIDE)
                 if (abs(target.toFloat() / longSide - 1f) > 0.15f) {
@@ -195,7 +200,7 @@ class PageRecognizer(private val context: Context) {
     companion object {
         const val OCR_MAX_SIDE = 3000
         /** Satrlar orasidagi maqbul masofa (px). */
-        private const val TARGET_PITCH = 58f
+        private const val TARGET_PITCH = 52f
         private const val MAX_ADAPTIVE_SIDE = 4600
     }
 }

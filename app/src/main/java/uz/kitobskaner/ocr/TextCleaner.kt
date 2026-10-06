@@ -12,6 +12,7 @@ object TextCleaner {
     private const val CYR = "асеорхуАВСЕНКМОРТХ"
     private val latToCyr = HashMap<Char, Char>().apply { for (i in LAT.indices) put(LAT[i], CYR[i]) }
     private val cyrToLat = HashMap<Char, Char>().apply { for (i in CYR.indices) put(CYR[i], LAT[i]) }
+    private val SINGLE_WORDS = setOf("u", "U", "o", "a", "A", "и", "И", "в", "В", "с", "С", "к", "К", "о", "О", "у", "У", "я", "Я", "а", "А", "—", "–", "-")
     private val UZ_APOSTROPHE = Regex("([oOgG])['‘’`ʼ´]")
 
     private fun isCyr(c: Char) = c in 'Ѐ'..'ӿ'
@@ -55,7 +56,10 @@ object TextCleaner {
                 w = sb.toString()
             }
         }
-        if (uzLatin) w = UZ_APOSTROPHE.replace(w) { it.groupValues[1] + "ʻ" }
+        if (uzLatin) {
+            w = UZ_APOSTROPHE.replace(w) { it.groupValues[1] + "ʻ" }
+            w = w.replace(Regex("ʻ['‘’`ʼ´ʻ\"“]+"), "ʻ")
+        }
         return w
     }
 
@@ -68,8 +72,26 @@ object TextCleaner {
             // tinish belgilarining o'zi (— , . «») — ishonch past bo'lsa shovqin
             return confidence < 40 && t.length > 2 || t.all { it in "|_~^=<>\\/*#@" }
         }
-        if (confidence < 20 && t.length <= 2) return true
-        if (confidence < 30 && alnum.toFloat() / t.length < 0.5f) return true
+        if (confidence < 45 && t.length <= 2 && t.none { it.isDigit() }) return true
+        // yolg'iz bitta belgi (ustun chizig'i "I", "|", "l") — haqiqiy bir harfli so'zlar bundan mustasno
+        if (t.length == 1 && confidence < 75 && t !in SINGLE_WORDS && !t[0].isDigit()) return true
+        if (confidence < 25 && t.length <= 4) return true
+        if (confidence < 40 && alnum.toFloat() / t.length < 0.5f) return true
         return false
+    }
+
+    /**
+     * Lotin yozuvidagi kitobda yolg'iz kirill so'z (yoki aksincha) — deyarli doim OCR xatosi
+     * (rasm, chiziq yoki kursiv matn qoldig'i).
+     */
+    fun isStrayScript(text: String, confidence: Int, cyrillicBook: Boolean): Boolean {
+        var cyr = 0
+        var lat = 0
+        for (c in text) { if (isCyr(c)) cyr++ else if (isLat(c)) lat++ }
+        val foreign = if (cyrillicBook) lat else cyr
+        val native = if (cyrillicBook) cyr else lat
+        if (foreign == 0 || native > 0) return false
+        // ruscha kitobdagi inglizcha atamalar (yoki aksincha) — ishonch yuqori bo'lsa qoldiramiz
+        return confidence < 75 || foreign <= 2
     }
 }

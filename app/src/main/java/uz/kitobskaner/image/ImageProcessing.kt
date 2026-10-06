@@ -299,6 +299,14 @@ object ImageProcessing {
         var bestV = 0f
         for (l in max(lag, 10)..maxLag) if (ac[l] > bestV) { bestV = ac[l]; best = l }
         if (best < 0 || bestV / ac[0] < 0.12f) return null
+        // garmonikani (2× qadam) tuzatish: yarim masofada ham kuchli cho'qqi bo'lsa, o'sha haqiqiy qadam
+        repeat(2) {
+            val half = best / 2
+            if (half < 10) return@repeat
+            var j = max(1, half - 3)
+            for (l in max(1, half - 3)..min(maxLag, half + 3)) if (ac[l] > ac[j]) j = l
+            if (ac[j] > 0.5f * bestV) { best = j; bestV = ac[j] }
+        }
         // aniqroq: parabolik interpolyatsiya
         val p = if (best in 1 until maxLag) {
             val a = ac[best - 1]; val b = ac[best]; val c = ac[best + 1]

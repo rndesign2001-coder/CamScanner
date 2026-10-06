@@ -19,7 +19,7 @@ class HWord(var text: String, val box: Box, val conf: Int) {
 }
 
 class HLine(
-    val box: Box,
+    var box: Box,
     val size: Float,
     val ascenders: Float,
     val descenders: Float,
@@ -27,6 +27,14 @@ class HLine(
     val baselineOffset: Float,
 ) {
     val words = ArrayList<HWord>()
+    /** So'zlar olib tashlangandan keyin satr chegarasini qayta hisoblash. */
+    fun refit() {
+        if (words.isEmpty()) return
+        box = Box(words.minOf { it.box.l }, words.minOf { it.box.t }, words.maxOf { it.box.r }, words.maxOf { it.box.b })
+    }
+
+    /** Satr bezak belgisi (♣, ✓, •) bilan boshlanadi — yangi xatboshi/ro'yxat bandi. */
+    var bullet = false
     val text: String get() = words.joinToString(" ") { it.text }
     val xHeight: Float
         get() {
