@@ -22,6 +22,12 @@ enum class FontChoice(val label: String) { SERIF("Serif (kitob)"), SANS("Sans (z
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 @Serializable
+enum class Palette { INDIGO, OCEAN, EMERALD, SUNSET, ROSE, GRAPHITE, DYNAMIC }
+
+@Serializable
+enum class ScanMode { SINGLE, SPREAD }
+
+@Serializable
 enum class ImageFilter(val label: String) {
     ORIGINAL("Asl"),
     ENHANCED("Yorqin"),
@@ -40,6 +46,10 @@ enum class ImageQuality(val label: String, val maxSide: Int, val jpeg: Int) {
 data class AppSettings(
     val defaultLanguage: String = "auto",
     val theme: ThemeMode = ThemeMode.SYSTEM,
+    val palette: Palette = Palette.INDIGO,
+    /** Ilova interfeysi tili: "system", "uz", "ru", "en". */
+    val appLanguage: String = "system",
+    val scanMode: ScanMode = ScanMode.SINGLE,
     // OCR
     val removeHeaders: Boolean = true,
     val keepImages: Boolean = true,

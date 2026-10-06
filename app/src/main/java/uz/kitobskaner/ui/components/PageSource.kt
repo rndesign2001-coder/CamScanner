@@ -22,6 +22,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import java.io.File
+import uz.kitobskaner.R
 
 /** Sahifa manbalari: aqlli skaner (ML Kit), oddiy kamera, galereya. */
 class PageSource(
@@ -65,7 +66,7 @@ fun rememberPageSource(onImages: (List<Uri>) -> Unit): PageSource {
             scan = {
                 val activity = context.findActivity()
                 if (activity == null) {
-                    Toast.makeText(context, "Skanerni ochib bo'lmadi", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.err_scanner_open), Toast.LENGTH_SHORT).show()
                 } else {
                     val options = GmsDocumentScannerOptions.Builder()
                         .setGalleryImportAllowed(true)
@@ -77,11 +78,7 @@ fun rememberPageSource(onImages: (List<Uri>) -> Unit): PageSource {
                             scanLauncher.launch(IntentSenderRequest.Builder(sender).build())
                         }
                         .addOnFailureListener {
-                            Toast.makeText(
-                                context,
-                                "Aqlli skaner mavjud emas (Google Play xizmatlari kerak). Oddiy kamera ochilmoqda.",
-                                Toast.LENGTH_LONG
-                            ).show()
+                            Toast.makeText(context, context.getString(R.string.err_no_scanner), Toast.LENGTH_LONG).show()
                             val file = File(context.cacheDir, "camera/${System.currentTimeMillis()}.jpg")
                             file.parentFile?.mkdirs()
                             val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)

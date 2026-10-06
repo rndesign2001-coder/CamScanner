@@ -12,7 +12,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
 import uz.kitobskaner.image.ImageUtils
+import uz.kitobskaner.image.SpreadSplitter
+import kotlin.math.max
+import kotlin.math.min
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -75,19 +80,34 @@ class ProjectRepository(private val context: Context, private val settings: Sett
         next
     }
 
-    /** @return yangi loyiha yoki null — birorta ham rasm o'qilmasa */
-    suspend fun createProject(uris: List<Uri>, onProgress: (Int, Int) -> Unit = { _, _ -> }): Project? {
+    /**
+     * Rasmlardan yangi loyiha.
+     * @param splitSpreads har bir surat kitob yoyilmasi — ikki sahifaga ajratiladi
+     * @return yangi loyiha yoki null — birorta ham rasm o'qilmasa
+     */
+    suspend fun createProject(
+        uris: List<Uri>,
+        splitSpreads: Boolean = false,
+        titlePrefix: String = "Kitob",
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): Project? = createFrom(titlePrefix) { id -> importPages(id, uris, splitSpreads, onProgress) }
+
+    /** PDF fayldan loyiha (har bir sahifa rasm sifatida — keyin OCR qilinadi). */
+    suspend fun createFromPdf(uri: Uri, title: String, onProgress: (Int, Int) -> Unit = { _, _ -> }): Project? =
+        createFrom(title, exactTitle = true) { id -> importPdfPages(id, uri, onProgress) }
+
+    private suspend fun createFrom(title: String, exactTitle: Boolean = false, pagesOf: suspend (String) -> List<PageInfo>): Project? {
         ensureLoaded()
         val now = System.currentTimeMillis()
-        val title = "Kitob " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(now))
+        val name = if (exactTitle) title else title + " " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(now))
         val p = Project(
             id = UUID.randomUUID().toString().take(12),
-            title = title,
+            title = name,
             createdAt = now,
             updatedAt = now,
             language = settings.value.defaultLanguage,
         )
-        val pages = importPages(p.id, uris, onProgress)
+        val pages = pagesOf(p.id)
         if (pages.isEmpty()) {
             withContext(Dispatchers.IO) { projectDir(p.id).deleteRecursively() }
             return null
@@ -101,33 +121,111 @@ class ProjectRepository(private val context: Context, private val settings: Sett
     }
 
     /** @return qo'shilgan sahifalar soni */
-    suspend fun addPages(id: String, uris: List<Uri>, onProgress: (Int, Int) -> Unit = { _, _ -> }): Int {
-        val pages = importPages(id, uris, onProgress)
+    suspend fun addPages(
+        id: String,
+        uris: List<Uri>,
+        splitSpreads: Boolean = false,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): Int {
+        val pages = importPages(id, uris, splitSpreads, onProgress)
         if (pages.isNotEmpty()) mutate(id) { it.copy(pages = it.pages + pages) }
         return pages.size
     }
 
-    private suspend fun importPages(projectId: String, uris: List<Uri>, onProgress: (Int, Int) -> Unit): List<PageInfo> =
+    private fun savePage(projectId: String, bmp: Bitmap): PageInfo {
+        val pageId = UUID.randomUUID().toString().take(12)
+        ImageUtils.saveJpeg(bmp, pageFile(projectId, pageId), 93)
+        val thumb = ImageUtils.scaleDown(bmp.copy(Bitmap.Config.ARGB_8888, false), THUMB_SIDE)
+        ImageUtils.saveJpeg(thumb, thumbFile(projectId, pageId), 85)
+        thumb.recycle()
+        return PageInfo(pageId)
+    }
+
+    /** Bitmapni saqlaydi; kerak bo'lsa yoyilmani ikki sahifaga ajratadi. */
+    private fun saveMaybeSplit(projectId: String, bmp: Bitmap, split: Boolean): List<PageInfo> {
+        if (!split) return listOf(savePage(projectId, bmp))
+        val (l, r) = SpreadSplitter.split(bmp)
+        val out = listOf(savePage(projectId, l), savePage(projectId, r))
+        l.recycle(); r.recycle()
+        return out
+    }
+
+    private suspend fun importPages(
+        projectId: String,
+        uris: List<Uri>,
+        split: Boolean,
+        onProgress: (Int, Int) -> Unit,
+    ): List<PageInfo> = withContext(Dispatchers.IO) {
+        val result = ArrayList<PageInfo>()
+        uris.forEachIndexed { i, uri ->
+            onProgress(i, uris.size)
+            try {
+                val bmp = ImageUtils.decodeUri(context, uri, if (split) MAX_SPREAD_SIDE else MAX_PAGE_SIDE)
+                    ?: return@forEachIndexed
+                result += saveMaybeSplit(projectId, bmp, split)
+                if (!bmp.isRecycled) bmp.recycle()
+            } catch (e: Throwable) {
+                // o'qib bo'lmaydigan rasm o'tkazib yuboriladi
+            }
+        }
+        onProgress(uris.size, uris.size)
+        result
+    }
+
+    private suspend fun importPdfPages(projectId: String, uri: Uri, onProgress: (Int, Int) -> Unit): List<PageInfo> =
         withContext(Dispatchers.IO) {
             val result = ArrayList<PageInfo>()
-            uris.forEachIndexed { i, uri ->
-                onProgress(i, uris.size)
-                try {
-                    val bmp = ImageUtils.decodeUri(context, uri, MAX_PAGE_SIDE) ?: return@forEachIndexed
-                    val pageId = UUID.randomUUID().toString().take(12)
-                    ImageUtils.saveJpeg(bmp, pageFile(projectId, pageId), 93)
-                    val thumb = ImageUtils.scaleDown(bmp, THUMB_SIDE)
-                    ImageUtils.saveJpeg(thumb, thumbFile(projectId, pageId), 85)
-                    if (thumb !== bmp) thumb.recycle()
-                    if (!bmp.isRecycled) bmp.recycle()
-                    result += PageInfo(pageId)
-                } catch (e: Throwable) {
-                    // o'qib bo'lmaydigan rasm o'tkazib yuboriladi
+            try {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
+                    PdfRenderer(fd).use { renderer ->
+                        val n = renderer.pageCount
+                        for (i in 0 until n) {
+                            onProgress(i, n)
+                            renderer.openPage(i).use { page ->
+                                // ~300 dpi, lekin uzun tomoni 3400 px dan oshmaydi
+                                val k = min(300f / 72f, MAX_PAGE_SIDE.toFloat() / max(page.width, page.height))
+                                val bmp = Bitmap.createBitmap(
+                                    (page.width * k).toInt().coerceAtLeast(1),
+                                    (page.height * k).toInt().coerceAtLeast(1),
+                                    Bitmap.Config.ARGB_8888
+                                )
+                                bmp.eraseColor(android.graphics.Color.WHITE)
+                                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                                result += savePage(projectId, bmp)
+                                bmp.recycle()
+                            }
+                        }
+                        onProgress(n, n)
+                    }
                 }
+            } catch (e: Throwable) {
+                // shifrlangan yoki buzilgan PDF
             }
-            onProgress(uris.size, uris.size)
             result
         }
+
+    /** Mavjud sahifani (yoyilmani) ikkiga bo'ladi. */
+    suspend fun splitPage(id: String, pageId: String): Boolean {
+        val newPages = withContext(Dispatchers.IO) {
+            val bmp = ImageUtils.decodeFile(pageFile(id, pageId), MAX_SPREAD_SIDE) ?: return@withContext null
+            val pages = saveMaybeSplit(id, bmp, true)
+            bmp.recycle()
+            pages
+        } ?: return false
+        mutate(id) { p ->
+            val list = p.pages.toMutableList()
+            val i = list.indexOfFirst { it.id == pageId }
+            if (i < 0) return@mutate p
+            list.removeAt(i)
+            list.addAll(i, newPages)
+            p.copy(pages = list)
+        }
+        withContext(Dispatchers.IO) {
+            pageFile(id, pageId).delete(); thumbFile(id, pageId).delete(); ocrFile(id, pageId).delete()
+        }
+        _ocrRevision.value++
+        return true
+    }
 
     suspend fun rename(id: String, title: String) {
         mutate(id) { it.copy(title = title.trim().ifEmpty { it.title }) }
@@ -229,6 +327,7 @@ class ProjectRepository(private val context: Context, private val settings: Sett
 
     companion object {
         const val MAX_PAGE_SIDE = 3400
+        const val MAX_SPREAD_SIDE = 5000
         const val THUMB_SIDE = 480
     }
 }

@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -91,8 +92,10 @@ import uz.kitobskaner.ui.components.Pill
 import uz.kitobskaner.ui.components.ProgressDialog
 import uz.kitobskaner.ui.components.SourceSheet
 import uz.kitobskaner.ui.components.rememberPageSource
-import uz.kitobskaner.ui.home.RenameDialog
-import uz.kitobskaner.ui.theme.BrandGradient
+import uz.kitobskaner.ui.components.RenameDialog
+import uz.kitobskaner.R
+import androidx.compose.ui.res.stringResource
+import uz.kitobskaner.ui.theme.brandGradient
 import uz.kitobskaner.ui.theme.Emerald
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -134,10 +137,10 @@ fun ProjectScreen(
     val source = rememberPageSource { uris ->
         scope.launch {
             importing = 0 to uris.size
-            val added = repo.addPages(projectId, uris) { d, t -> importing = d to t }
+            val added = repo.addPages(projectId, uris, splitSpreads = App.instance.settings.value.scanMode == uz.kitobskaner.data.ScanMode.SPREAD) { d, t -> importing = d to t }
             importing = null
             if (added > 0) OcrWorker.start(context, projectId)
-            else android.widget.Toast.makeText(context, "Rasmlarni o'qib bo'lmadi", android.widget.Toast.LENGTH_LONG).show()
+            else android.widget.Toast.makeText(context, context.getString(R.string.err_images), android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -153,25 +156,34 @@ fun ProjectScreen(
             if (selection.isNotEmpty()) {
                 TopAppBar(
                     navigationIcon = { IconButton(onClick = { selection = emptySet() }) { Icon(Icons.Rounded.Close, null) } },
-                    title = { Text("${selection.size} ta tanlandi") },
+                    title = { Text(stringResource(R.string.n_selected, selection.size)) },
                     actions = {
                         IconButton(onClick = {
                             val ids = selection
                             selection = emptySet()
                             scope.launch { repo.resetOcr(projectId, ids); OcrWorker.start(context, projectId) }
-                        }) { Icon(Icons.Rounded.Refresh, "Qayta aniqlash") }
+                        }) { Icon(Icons.Rounded.Refresh, stringResource(R.string.rerecognize)) }
+                        IconButton(onClick = {
+                            val ids = selection
+                            selection = emptySet()
+                            scope.launch {
+                                var any = false
+                                ids.forEach { if (repo.splitPage(projectId, it)) any = true }
+                                if (any) OcrWorker.start(context, projectId)
+                            }
+                        }) { Icon(Icons.Rounded.AutoStories, stringResource(R.string.split_page)) }
                         IconButton(onClick = {
                             val ids = selection
                             selection = emptySet()
                             scope.launch { repo.deletePages(projectId, ids) }
-                        }) { Icon(Icons.Rounded.Delete, "O'chirish") }
+                        }) { Icon(Icons.Rounded.Delete, stringResource(R.string.delete)) }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                 )
             } else {
                 TopAppBar(
                     navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Orqaga") }
+                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
                     },
                     title = {
                         Text(
@@ -180,20 +192,20 @@ fun ProjectScreen(
                         )
                     },
                     actions = {
-                        IconButton(onClick = { showLanguage = true }) { Icon(Icons.Rounded.Translate, "Til") }
+                        IconButton(onClick = { showLanguage = true }) { Icon(Icons.Rounded.Translate, stringResource(R.string.book_language)) }
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, null) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Nomini o'zgartirish") },
+                                    text = { Text(stringResource(R.string.rename)) },
                                     leadingIcon = { Icon(Icons.Rounded.Edit, null) },
                                     onClick = { menu = false; showRename = true })
                                 DropdownMenuItem(
-                                    text = { Text("Hammasini qayta aniqlash") },
+                                    text = { Text(stringResource(R.string.rerecognize_all)) },
                                     leadingIcon = { Icon(Icons.Rounded.Refresh, null) },
                                     onClick = { menu = false; confirmRerun = true })
                                 DropdownMenuItem(
-                                    text = { Text("Kitobni o'chirish") },
+                                    text = { Text(stringResource(R.string.delete_book)) },
                                     leadingIcon = { Icon(Icons.Rounded.Delete, null) },
                                     onClick = { menu = false; showDelete = true })
                             }
@@ -221,7 +233,7 @@ fun ProjectScreen(
                     ) {
                         Icon(Icons.Rounded.Add, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Sahifa")
+                        Text(stringResource(R.string.page_short))
                     }
                     Button(
                         onClick = onExport,
@@ -230,13 +242,13 @@ fun ProjectScreen(
                             .weight(1.6f)
                             .height(52.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(if (p.pages.isNotEmpty()) BrandGradient else androidx.compose.ui.graphics.SolidColor(Color.Gray)),
+                            .background(if (p.pages.isNotEmpty()) brandGradient else androidx.compose.ui.graphics.SolidColor(Color.Gray)),
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White),
                         shape = RoundedCornerShape(16.dp),
                     ) {
                         Icon(Icons.Rounded.IosShare, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("PDF / Eksport", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.export_btn), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -284,9 +296,9 @@ fun ProjectScreen(
         }
     }
 
-    if (showSource) SourceSheet(source) { showSource = false }
+    if (showSource) SourceSheet(source, onDismiss = { showSource = false })
     importing?.let { (d, t) -> ProgressDialog("Sahifalar qo'shilmoqda", if (t > 0) d.toFloat() / t else null, "$d / $t") }
-    if (showRename) RenameDialog(p.title, onDismiss = { showRename = false }) {
+    if (showRename) RenameDialog(p.title, stringResource(R.string.book_name), onDismiss = { showRename = false }) {
         scope.launch { repo.rename(projectId, it) }
         showRename = false
     }
@@ -304,8 +316,8 @@ fun ProjectScreen(
     pendingLanguage?.let { lang ->
         AlertDialog(
             onDismissRequest = { pendingLanguage = null },
-            title = { Text("Til o'zgartirildi") },
-            text = { Text("Barcha sahifalar matni \"${Languages.label(lang)}\" bilan qayta aniqlansinmi? Qo'lda kiritilgan tuzatishlar o'chadi.") },
+            title = { Text(stringResource(R.string.lang_changed)) },
+            text = { Text(stringResource(R.string.lang_changed_text, Languages.label(lang))) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingLanguage = null
@@ -315,20 +327,20 @@ fun ProjectScreen(
                         repo.resetOcr(projectId, p.pages.map { it.id })
                         OcrWorker.start(context, projectId)
                     }
-                }) { Text("Ha, qayta aniqlash") }
+                }) { Text(stringResource(R.string.yes_rerecognize)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     pendingLanguage = null
                     scope.launch { repo.setLanguage(projectId, lang) }
-                }) { Text("Faqat yangi sahifalar uchun") }
+                }) { Text(stringResource(R.string.only_new_pages)) }
             },
         )
     }
     if (confirmRerun) AlertDialog(
         onDismissRequest = { confirmRerun = false },
-        title = { Text("Qayta aniqlash") },
-        text = { Text("Barcha sahifalar matni qaytadan aniqlanadi. Qo'lda kiritilgan tuzatishlar o'chadi.") },
+        title = { Text(stringResource(R.string.rerecognize)) },
+        text = { Text(stringResource(R.string.rerecognize_all_text)) },
         confirmButton = {
             TextButton(onClick = {
                 confirmRerun = false
@@ -337,24 +349,24 @@ fun ProjectScreen(
                     repo.resetOcr(projectId, p.pages.map { it.id })
                     OcrWorker.start(context, projectId)
                 }
-            }) { Text("Boshlash") }
+            }) { Text(stringResource(R.string.start)) }
         },
-        dismissButton = { TextButton(onClick = { confirmRerun = false }) { Text("Bekor qilish") } },
+        dismissButton = { TextButton(onClick = { confirmRerun = false }) { Text(stringResource(R.string.cancel)) } },
     )
     if (showDelete) AlertDialog(
         onDismissRequest = { showDelete = false },
         icon = { Icon(Icons.Rounded.Delete, null) },
-        title = { Text("Kitob o'chirilsinmi?") },
-        text = { Text("Barcha sahifalar va aniqlangan matn o'chiriladi.") },
+        title = { Text(stringResource(R.string.delete_q)) },
+        text = { Text(stringResource(R.string.delete_book_text, p.title)) },
         confirmButton = {
             TextButton(onClick = {
                 showDelete = false
                 OcrWorker.cancel(context, projectId)
                 scope.launch { repo.delete(projectId) }
                 onBack()
-            }) { Text("O'chirish", color = MaterialTheme.colorScheme.error) }
+            }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Bekor qilish") } },
+        dismissButton = { TextButton(onClick = { showDelete = false }) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -382,23 +394,23 @@ private fun StatusCard(
                     Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(BrandGradient),
+                        .background(brandGradient),
                     contentAlignment = Alignment.Center
                 ) { Icon(Icons.Rounded.TextSnippet, null, tint = Color.White) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         when {
-                            total == 0 -> "Sahifa qo'shing"
-                            done == total -> "Matn tayyor"
-                            running && enqueued -> "Navbatda…"
-                            running -> "Matn aniqlanmoqda…"
-                            else -> "Matn aniqlanmagan"
+                            total == 0 -> stringResource(R.string.add_pages)
+                            done == total -> stringResource(R.string.text_ready)
+                            running && enqueued -> stringResource(R.string.queued)
+                            running -> stringResource(R.string.recognizing)
+                            else -> stringResource(R.string.not_recognized)
                         },
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "$done / $total sahifa • qurilmada, internetsiz",
+                        stringResource(R.string.ocr_status_sub, done, total),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -426,7 +438,7 @@ private fun StatusCard(
                         Icon(Icons.Rounded.Translate, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            (if (auto) "Avto: " else "") + Languages.label(if (auto && language == "auto") null else language),
+                            (if (auto) stringResource(R.string.lang_auto) + ": " else "") + Languages.label(if (auto && language == "auto") null else language),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -439,13 +451,13 @@ private fun StatusCard(
                         FilledTonalButton(onClick = onStop, shape = RoundedCornerShape(14.dp)) {
                             Icon(Icons.Rounded.Stop, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("To'xtatish")
+                            Text(stringResource(R.string.stop))
                         }
                     } else {
                         Button(onClick = onStart, shape = RoundedCornerShape(14.dp)) {
                             Icon(Icons.Rounded.PlayArrow, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Aniqlash")
+                            Text(stringResource(R.string.recognize))
                         }
                     }
                 }

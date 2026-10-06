@@ -15,6 +15,7 @@ import uz.kitobskaner.image.ImageProcessing
 import uz.kitobskaner.image.ImageUtils
 import java.io.Closeable
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -32,6 +33,8 @@ class OcrEngine(context: Context, val language: String) : Closeable {
         tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
         tess.setVariable("user_defined_dpi", "300")
         tess.setVariable("preserve_interword_spaces", "0")
+        // teskari (oq-ustida-qora emas) matnni qidirmaslik — 20–30% tezroq
+        tess.setVariable("tessedit_do_invert", "0")
     }
 
     /** @return hOCR va o'rtacha ishonch (0..100) */
@@ -60,14 +63,48 @@ class PageRecognizer(private val context: Context) {
 
     class Prepared(val norm: GrayImage, val scale: Float)
 
-    /** OCR uchun tasvir: yorug'lik tekislangan kulrang, o'lchami me'yorlangan. */
-    fun prepare(pageFile: File, maxSide: Int = OCR_MAX_SIDE): Prepared? {
-        val (ow, _) = ImageUtils.imageSize(pageFile)
-        val bmp = ImageUtils.decodeFile(pageFile, maxSide) ?: return null
+    /**
+     * OCR uchun tasvir: yorug'lik tekislangan kulrang. Satrlar orasidagi qadam o'lchanib,
+     * matn Tesseract uchun eng qulay o'lchamga (x-balandlik ≈ 25–30 px) keltiriladi —
+     * kichik shriftli yoki uzoqdan olingan suratlarda aniqlik sezilarli oshadi.
+     */
+    fun prepare(pageFile: File, maxSide: Int = OCR_MAX_SIDE, adaptive: Boolean = true): Prepared? {
+        val (ow, oh) = ImageUtils.imageSize(pageFile)
+        var bmp = ImageUtils.decodeFile(pageFile, maxSide) ?: return null
+        var norm = ImageProcessing.normalize(ImageProcessing.toGray(bmp))
+        if (adaptive) {
+            val pitch = ImageProcessing.linePitch(norm)
+            if (pitch != null) {
+                val k = (TARGET_PITCH / pitch).coerceIn(0.5f, 2.6f)
+                val longSide = max(bmp.width, bmp.height)
+                val target = (longSide * k).toInt().coerceIn(1200, MAX_ADAPTIVE_SIDE)
+                if (abs(target.toFloat() / longSide - 1f) > 0.15f) {
+                    val originalLong = max(ow, oh)
+                    val scaled = if (target < longSide || originalLong <= longSide) {
+                        val f = target.toFloat() / longSide
+                        android.graphics.Bitmap.createScaledBitmap(
+                            bmp, (bmp.width * f).toInt().coerceAtLeast(1), (bmp.height * f).toInt().coerceAtLeast(1), true
+                        )
+                    } else {
+                        // asl fayl kattaroq — undan qayta o'qiymiz (sifatliroq)
+                        ImageUtils.decodeFile(pageFile, target)?.let { d ->
+                            if (max(d.width, d.height) < target) {
+                                val f = target.toFloat() / max(d.width, d.height)
+                                android.graphics.Bitmap.createScaledBitmap(d, (d.width * f).toInt(), (d.height * f).toInt(), true)
+                                    .also { if (it !== d) d.recycle() }
+                            } else d
+                        }
+                    }
+                    if (scaled != null) {
+                        if (scaled !== bmp) bmp.recycle()
+                        bmp = scaled
+                        norm = ImageProcessing.normalize(ImageProcessing.toGray(bmp))
+                    }
+                }
+            }
+        }
         val scale = if (ow > 0) bmp.width.toFloat() / ow else 1f
-        val gray = ImageProcessing.toGray(bmp)
         bmp.recycle()
-        val norm = ImageProcessing.normalize(gray)
         return Prepared(norm, scale)
     }
 
@@ -157,5 +194,8 @@ class PageRecognizer(private val context: Context) {
 
     companion object {
         const val OCR_MAX_SIDE = 3000
+        /** Satrlar orasidagi maqbul masofa (px). */
+        private const val TARGET_PITCH = 58f
+        private const val MAX_ADAPTIVE_SIDE = 4600
     }
 }

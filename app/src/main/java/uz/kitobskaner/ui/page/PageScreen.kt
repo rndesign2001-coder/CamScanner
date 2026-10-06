@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
@@ -91,6 +92,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import uz.kitobskaner.App
+import uz.kitobskaner.R
+import androidx.compose.ui.res.stringResource
 import uz.kitobskaner.data.Align
 import uz.kitobskaner.data.BlockType
 import uz.kitobskaner.data.OcrPage
@@ -139,14 +142,14 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = { if (editing) editing = false else onBack() }) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Orqaga")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back))
                     }
                 },
                 title = {
                     Column {
-                        Text(if (editing) "Tahrirlash" else "Sahifa ${index + 1}", style = MaterialTheme.typography.titleMedium)
+                        Text(if (editing) stringResource(R.string.edit) else stringResource(R.string.page_n, index + 1), style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "${p.pages.size} sahifadan",
+                            stringResource(R.string.of_n_pages, p.pages.size),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -163,16 +166,16 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                                 ocr = updated
                             }
                             editing = false
-                        }) { Icon(Icons.Rounded.Check, "Saqlash", tint = MaterialTheme.colorScheme.primary) }
+                        }) { Icon(Icons.Rounded.Check, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
                     } else {
                         IconButton(onClick = {
                             scope.launch { repo.rotatePage(projectId, page.id, 90f); OcrWorker.start(context, projectId) }
-                        }) { Icon(Icons.Rounded.RotateRight, "Burish") }
+                        }) { Icon(Icons.Rounded.RotateRight, stringResource(R.string.rotate)) }
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, null) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Matnni nusxalash") },
+                                    text = { Text(stringResource(R.string.copy_text)) },
                                     leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) },
                                     enabled = ocr != null,
                                     onClick = {
@@ -180,7 +183,7 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                                         ocr?.let { copyText(context, it.plainText()) }
                                     })
                                 DropdownMenuItem(
-                                    text = { Text("Matnni qayta aniqlash") },
+                                    text = { Text(stringResource(R.string.rerecognize)) },
                                     leadingIcon = { Icon(Icons.Rounded.Refresh, null) },
                                     onClick = {
                                         menu = false
@@ -190,7 +193,16 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                                         }
                                     })
                                 DropdownMenuItem(
-                                    text = { Text("Oldinga surish") },
+                                    text = { Text(stringResource(R.string.split_page)) },
+                                    leadingIcon = { Icon(Icons.Rounded.AutoStories, null) },
+                                    onClick = {
+                                        menu = false
+                                        scope.launch {
+                                            if (repo.splitPage(projectId, page.id)) OcrWorker.start(context, projectId)
+                                        }
+                                    })
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.move_left)) },
                                     leadingIcon = { Icon(Icons.Rounded.SwapHoriz, null) },
                                     enabled = index > 0,
                                     onClick = {
@@ -198,7 +210,7 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                                         scope.launch { repo.movePage(projectId, page.id, -1); index-- }
                                     })
                                 DropdownMenuItem(
-                                    text = { Text("Orqaga surish") },
+                                    text = { Text(stringResource(R.string.move_right)) },
                                     leadingIcon = { Icon(Icons.Rounded.SwapHoriz, null) },
                                     enabled = index < p.pages.size - 1,
                                     onClick = {
@@ -206,7 +218,7 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                                         scope.launch { repo.movePage(projectId, page.id, 1); index++ }
                                     })
                                 DropdownMenuItem(
-                                    text = { Text("Sahifani o'chirish") },
+                                    text = { Text(stringResource(R.string.delete_page)) },
                                     leadingIcon = { Icon(Icons.Rounded.Delete, null) },
                                     onClick = { menu = false; confirmDelete = true })
                             }
@@ -227,7 +239,7 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         FilledIconButton(onClick = { if (index > 0) index-- }, enabled = index > 0) {
-                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Oldingi")
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, stringResource(R.string.previous))
                         }
                         Spacer(Modifier.width(8.dp))
                         SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
@@ -236,17 +248,17 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                                 onClick = { tab = 0 },
                                 shape = SegmentedButtonDefaults.itemShape(0, 2),
                                 icon = { Icon(Icons.Rounded.Image, null, Modifier.size(18.dp)) },
-                            ) { Text("Rasm") }
+                            ) { Text(stringResource(R.string.tab_image)) }
                             SegmentedButton(
                                 selected = tab == 1,
                                 onClick = { tab = 1 },
                                 shape = SegmentedButtonDefaults.itemShape(1, 2),
                                 icon = { Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp)) },
-                            ) { Text("Matn") }
+                            ) { Text(stringResource(R.string.tab_text)) }
                         }
                         Spacer(Modifier.width(8.dp))
                         FilledIconButton(onClick = { if (index < p.pages.size - 1) index++ }, enabled = index < p.pages.size - 1) {
-                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Keyingi")
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, stringResource(R.string.next))
                         }
                     }
                 }
@@ -268,7 +280,7 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                         .padding(12.dp),
                     textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Serif),
                     shape = RoundedCornerShape(16.dp),
-                    supportingText = { Text("# sarlavha  •  ## kichik sarlavha  •  **qalin**  •  bo'sh qator — yangi xatboshi") },
+                    supportingText = { Text(stringResource(R.string.markup_hint)) },
                 )
                 tab == 0 -> ZoomableImage(repo.pageFile(projectId, page.id), page.revision)
                 else -> TextView(
@@ -286,22 +298,22 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
 
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
-        title = { Text("Sahifa o'chirilsinmi?") },
+        title = { Text(stringResource(R.string.delete_page_q)) },
         confirmButton = {
             TextButton(onClick = {
                 confirmDelete = false
                 val id = page.id
                 scope.launch { repo.deletePages(projectId, setOf(id)) }
-            }) { Text("O'chirish", color = MaterialTheme.colorScheme.error) }
+            }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Bekor qilish") } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
 private fun copyText(context: Context, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     cm.setPrimaryClip(ClipData.newPlainText("Kitob Skaner", text))
-    Toast.makeText(context, "Matn nusxalandi", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, context.getString(R.string.text_copied), Toast.LENGTH_SHORT).show()
 }
 
 @Composable
@@ -356,7 +368,7 @@ private fun TextView(ocr: OcrPage?, loading: Boolean, pageDone: Boolean, imagesD
             CircularProgressIndicator()
             Spacer(Modifier.height(16.dp))
             Text(
-                if (pageDone) "Matn topilmadi" else "Matn hali aniqlanmagan.\nLoyiha sahifasida \"Aniqlash\" tugmasini bosing.",
+                if (pageDone) stringResource(R.string.no_text_found) else stringResource(R.string.not_recognized_yet),
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -373,22 +385,22 @@ private fun TextView(ocr: OcrPage?, loading: Boolean, pageDone: Boolean, imagesD
                 if (ocr.confidence >= 0) {
                     val c = ocr.confidence
                     Pill(
-                        "ANIQLIK $c%",
+                        stringResource(R.string.accuracy, c).uppercase(),
                         (if (c >= 80) Emerald else Color(0xFFF59E0B)).copy(alpha = 0.15f),
                         if (c >= 80) Emerald else Color(0xFFB45309)
                     )
                 }
-                if (ocr.edited) Pill("TAHRIRLANGAN", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                if (ocr.edited) Pill(stringResource(R.string.edited).uppercase(), MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onEdit) {
                     Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Tahrirlash")
+                    Text(stringResource(R.string.edit))
                 }
             }
         }
         if (ocr.blocks.isEmpty()) item {
-            Text("Bu sahifada matn topilmadi.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.no_text_on_page), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(ocr.blocks) { b -> BlockView(b, imagesDir) }
     }

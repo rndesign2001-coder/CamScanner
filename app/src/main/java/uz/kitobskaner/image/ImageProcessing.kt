@@ -258,4 +258,53 @@ object ImageProcessing {
         }
         return out
     }
+
+    /**
+     * Satrlar orasidagi o'rtacha masofani (px) qatorlar bo'yicha siyoh profili avtokorrelyatsiyasi
+     * yordamida baholaydi. Matn topilmasa null.
+     */
+    fun linePitch(norm: GrayImage): Float? {
+        val w = norm.width
+        val h = norm.height
+        if (h < 200 || w < 200) return null
+        val x0 = w / 10
+        val x1 = w - w / 10
+        val prof = FloatArray(h)
+        for (y in 0 until h) {
+            var c = 0
+            val base = y * w
+            var x = x0
+            while (x < x1) {
+                if ((norm.data[base + x].toInt() and 0xFF) < 128) c++
+                x += 2
+            }
+            prof[y] = c.toFloat()
+        }
+        var mean = 0f
+        for (v in prof) mean += v
+        mean /= h
+        for (i in prof.indices) prof[i] -= mean
+        val maxLag = min(320, h / 3)
+        val ac = FloatArray(maxLag + 1)
+        for (lag in 0..maxLag) {
+            var s = 0f
+            for (y in 0 until h - lag) s += prof[y] * prof[y + lag]
+            ac[lag] = s / (h - lag)
+        }
+        if (ac[0] <= 0f) return null
+        // birinchi minimumdan keyingi eng katta cho'qqi
+        var lag = 1
+        while (lag < maxLag && ac[lag] > 0f && ac[lag] >= ac[lag + 1]) lag++
+        var best = -1
+        var bestV = 0f
+        for (l in max(lag, 10)..maxLag) if (ac[l] > bestV) { bestV = ac[l]; best = l }
+        if (best < 0 || bestV / ac[0] < 0.12f) return null
+        // aniqroq: parabolik interpolyatsiya
+        val p = if (best in 1 until maxLag) {
+            val a = ac[best - 1]; val b = ac[best]; val c = ac[best + 1]
+            val d = a - 2 * b + c
+            if (d != 0f) best + 0.5f * (a - c) / d else best.toFloat()
+        } else best.toFloat()
+        return p.takeIf { it in 12f..300f }
+    }
 }

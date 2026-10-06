@@ -165,10 +165,11 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
 
     private fun buildNotification(done: Int, total: Int): android.app.Notification {
         ensureChannel(applicationContext)
+        val loc = uz.kitobskaner.LocaleHelper.wrap(applicationContext)
         return NotificationCompat.Builder(applicationContext, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Matn aniqlanmoqda")
-            .setContentText("$done / $total sahifa")
+            .setContentTitle(loc.getString(R.string.recognizing))
+            .setContentText(loc.getString(R.string.ocr_notif, done, total))
             .setProgress(total, done, false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -203,7 +204,7 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                 val nm = context.getSystemService(NotificationManager::class.java)
                 if (nm.getNotificationChannel(CHANNEL) == null) {
                     nm.createNotificationChannel(
-                        NotificationChannel(CHANNEL, "Matnni aniqlash", NotificationManager.IMPORTANCE_LOW)
+                        NotificationChannel(CHANNEL, uz.kitobskaner.LocaleHelper.wrap(context).getString(R.string.channel_ocr), NotificationManager.IMPORTANCE_LOW)
                     )
                 }
             }

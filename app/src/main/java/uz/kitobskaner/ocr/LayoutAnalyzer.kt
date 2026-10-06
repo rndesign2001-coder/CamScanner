@@ -33,19 +33,30 @@ object LayoutAnalyzer {
         "^(bob|qism|bo[ʻ'‘’`]?lim|fasl|глава|часть|раздел|бо[бў]|қисм|бўлим|фасл|chapter|part|section)\\b.*",
         RegexOption.IGNORE_CASE
     )
-    private val UZ_APOSTROPHE = Regex("([oOgG])['‘’`ʼ´]")
     private const val HYPHENS = "-‐‑¬­"
 
     private class Para(val lines: MutableList<HLine>)
 
     fun analyze(page: HPage, language: String, opts: LayoutOptions): LayoutResult {
-        val uzLatin = opts.fixUzbekApostrophe && language.split('+').contains("uzb")
-        fun fix(s: String) = if (uzLatin) UZ_APOSTROPHE.replace(s) { it.groupValues[1] + "ʻ" } else s
+        val langs = language.split('+')
+        val uzLatin = opts.fixUzbekApostrophe && langs.contains("uzb")
+        val preferCyr = langs.firstOrNull()?.let { it == "rus" || it == "uzb_cyrl" } == true
 
-        // so'zlarni tozalash
+        // so'zlarni tozalash: aralash yozuv, 0→o, apostrof; shovqinni olib tashlash
         page.blocks.forEach { b ->
-            b.pars.forEach { p -> p.lines.forEach { l -> l.words.forEach { w -> w.text = fix(w.text) } } }
+            b.pars.forEach { p ->
+                p.lines.forEach { l ->
+                    l.words.forEach { w -> w.text = TextCleaner.fixWord(w.text, preferCyr, uzLatin) }
+                    l.words.removeAll { TextCleaner.isNoise(it.text, it.conf) }
+                }
+                // sahifa chetidagi (qo'shni varaq qoldig'i) tor, ishonchsiz satrlar
+                p.lines.removeAll { l ->
+                    l.words.isEmpty() || isEdgeNoise(l, page)
+                }
+            }
+            b.pars.removeAll { it.lines.isEmpty() }
         }
+        page.blocks.removeAll { !it.isImage && it.pars.isEmpty() }
 
         val allLines = page.blocks.filter { !it.isImage }.flatMap { b -> b.pars.flatMap { it.lines } }
 
@@ -115,6 +126,14 @@ object LayoutAnalyzer {
             }
         }
         return LayoutResult(items, words)
+    }
+
+    private fun isEdgeNoise(l: HLine, page: HPage): Boolean {
+        val conf = l.words.map { it.conf }.average()
+        val nearEdge = l.box.l < page.width * 0.04f || l.box.r > page.width * 0.96f
+        val narrow = l.box.w < page.width * 0.12f
+        val letters = l.words.sumOf { w -> w.text.count { it.isLetter() } }
+        return (nearEdge && narrow && conf < 70) || (conf < 35 && letters < 4)
     }
 
     private fun isUsefulImage(box: Box, page: HPage): Boolean {
