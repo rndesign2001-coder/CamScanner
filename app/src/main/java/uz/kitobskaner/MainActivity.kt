@@ -114,7 +114,7 @@ class MainActivity : ComponentActivity() {
         val app = application as App
         lifecycleScope.launch {
             val p = app.repository.createProject(uris)
-            openProject.value = p.id
+            if (p != null) openProject.value = p.id
         }
     }
 }

@@ -77,8 +77,9 @@ class PageRecognizer(private val context: Context) {
         pageId: String,
         imagesDir: File,
         settings: AppSettings,
+        maxSide: Int = OCR_MAX_SIDE,
     ): OcrPage {
-        val prepared = prepare(pageFile) ?: return OcrPage(0, 0, engine.language, emptyList())
+        val prepared = prepare(pageFile, maxSide) ?: return OcrPage(0, 0, engine.language, emptyList())
         val norm = prepared.norm
         val (hocr, confidence) = engine.hocr(norm)
 

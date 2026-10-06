@@ -75,7 +75,8 @@ class ProjectRepository(private val context: Context, private val settings: Sett
         next
     }
 
-    suspend fun createProject(uris: List<Uri>, onProgress: (Int, Int) -> Unit = { _, _ -> }): Project {
+    /** @return yangi loyiha yoki null — birorta ham rasm o'qilmasa */
+    suspend fun createProject(uris: List<Uri>, onProgress: (Int, Int) -> Unit = { _, _ -> }): Project? {
         ensureLoaded()
         val now = System.currentTimeMillis()
         val title = "Kitob " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(now))
@@ -87,6 +88,10 @@ class ProjectRepository(private val context: Context, private val settings: Sett
             language = settings.value.defaultLanguage,
         )
         val pages = importPages(p.id, uris, onProgress)
+        if (pages.isEmpty()) {
+            withContext(Dispatchers.IO) { projectDir(p.id).deleteRecursively() }
+            return null
+        }
         val full = p.copy(pages = pages)
         mutex.withLock {
             withContext(Dispatchers.IO) { save(full) }
@@ -95,9 +100,11 @@ class ProjectRepository(private val context: Context, private val settings: Sett
         return full
     }
 
-    suspend fun addPages(id: String, uris: List<Uri>, onProgress: (Int, Int) -> Unit = { _, _ -> }) {
+    /** @return qo'shilgan sahifalar soni */
+    suspend fun addPages(id: String, uris: List<Uri>, onProgress: (Int, Int) -> Unit = { _, _ -> }): Int {
         val pages = importPages(id, uris, onProgress)
-        mutate(id) { it.copy(pages = it.pages + pages) }
+        if (pages.isNotEmpty()) mutate(id) { it.copy(pages = it.pages + pages) }
+        return pages.size
     }
 
     private suspend fun importPages(projectId: String, uris: List<Uri>, onProgress: (Int, Int) -> Unit): List<PageInfo> =
@@ -105,14 +112,18 @@ class ProjectRepository(private val context: Context, private val settings: Sett
             val result = ArrayList<PageInfo>()
             uris.forEachIndexed { i, uri ->
                 onProgress(i, uris.size)
-                val bmp = ImageUtils.decodeUri(context, uri, MAX_PAGE_SIDE) ?: return@forEachIndexed
-                val pageId = UUID.randomUUID().toString().take(12)
-                ImageUtils.saveJpeg(bmp, pageFile(projectId, pageId), 93)
-                val thumb = ImageUtils.scaleDown(bmp, THUMB_SIDE)
-                ImageUtils.saveJpeg(thumb, thumbFile(projectId, pageId), 85)
-                thumb.recycle()
-                if (!bmp.isRecycled) bmp.recycle()
-                result += PageInfo(pageId)
+                try {
+                    val bmp = ImageUtils.decodeUri(context, uri, MAX_PAGE_SIDE) ?: return@forEachIndexed
+                    val pageId = UUID.randomUUID().toString().take(12)
+                    ImageUtils.saveJpeg(bmp, pageFile(projectId, pageId), 93)
+                    val thumb = ImageUtils.scaleDown(bmp, THUMB_SIDE)
+                    ImageUtils.saveJpeg(thumb, thumbFile(projectId, pageId), 85)
+                    if (thumb !== bmp) thumb.recycle()
+                    if (!bmp.isRecycled) bmp.recycle()
+                    result += PageInfo(pageId)
+                } catch (e: Throwable) {
+                    // o'qib bo'lmaydigan rasm o'tkazib yuboriladi
+                }
             }
             onProgress(uris.size, uris.size)
             result

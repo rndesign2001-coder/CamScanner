@@ -18,7 +18,12 @@ object ImageUtils {
     fun decodeUri(context: Context, uri: Uri, maxSide: Int): Bitmap? {
         val cr = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
+        try {
+            val input = cr.openInputStream(uri) ?: return null
+            input.use { BitmapFactory.decodeStream(it, null, bounds) } // o'lcham uchun; null qaytarishi normal
+        } catch (e: Exception) {
+            return null
+        }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         val opts = BitmapFactory.Options().apply {
             inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxSide)

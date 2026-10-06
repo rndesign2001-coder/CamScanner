@@ -134,9 +134,10 @@ fun ProjectScreen(
     val source = rememberPageSource { uris ->
         scope.launch {
             importing = 0 to uris.size
-            repo.addPages(projectId, uris) { d, t -> importing = d to t }
+            val added = repo.addPages(projectId, uris) { d, t -> importing = d to t }
             importing = null
-            OcrWorker.start(context, projectId)
+            if (added > 0) OcrWorker.start(context, projectId)
+            else android.widget.Toast.makeText(context, "Rasmlarni o'qib bo'lmadi", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 

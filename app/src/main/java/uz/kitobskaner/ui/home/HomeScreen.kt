@@ -60,6 +60,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,6 +82,7 @@ import java.util.Locale
 @Composable
 fun HomeScreen(onOpen: (String) -> Unit, onSettings: () -> Unit) {
     val repo = App.instance.repository
+    val context = LocalContext.current
     val projects by repo.projects.collectAsState()
     val scope = rememberCoroutineScope()
     var importing by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -91,7 +94,8 @@ fun HomeScreen(onOpen: (String) -> Unit, onSettings: () -> Unit) {
             importing = 0 to uris.size
             val p = repo.createProject(uris) { done, total -> importing = done to total }
             importing = null
-            onOpen(p.id)
+            if (p != null) onOpen(p.id)
+            else Toast.makeText(context, "Rasmlarni o'qib bo'lmadi. Boshqa rasm tanlab ko'ring.", Toast.LENGTH_LONG).show()
         }
     }
 

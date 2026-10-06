@@ -24,12 +24,23 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import uz.kitobskaner.App
 import uz.kitobskaner.R
+import uz.kitobskaner.data.OcrPage
 import java.util.concurrent.atomic.AtomicInteger
 
 class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
+    override suspend fun doWork(): Result = try {
+        process()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Result.failure()
+    } finally {
+        cancelNotification()
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    override suspend fun doWork(): Result {
+    private suspend fun process(): Result {
         val projectId = inputData.getString(KEY_PROJECT) ?: return Result.failure()
         val app = applicationContext as App
         val repo = app.repository
@@ -91,15 +102,20 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                             if (current.pages.none { it.id == pageId && !it.ocrDone }) continue
                             val file = repo.pageFile(projectId, pageId)
                             if (!file.exists()) continue
-                            val result = try {
-                                recognizer.recognize(engine, file, pageId, repo.imagesDir(projectId), settings)
-                            } catch (e: OutOfMemoryError) {
-                                System.gc()
-                                null
-                            } catch (e: Exception) {
-                                null
+                            var result: OcrPage? = null
+                            for (side in intArrayOf(PageRecognizer.OCR_MAX_SIDE, 2000)) {
+                                result = try {
+                                    recognizer.recognize(engine, file, pageId, repo.imagesDir(projectId), settings, side)
+                                } catch (e: OutOfMemoryError) {
+                                    System.gc()
+                                    null
+                                } catch (e: Exception) {
+                                    null
+                                }
+                                if (result != null) break
                             }
-                            if (result != null) repo.saveOcr(projectId, pageId, result)
+                            // muvaffaqiyatsiz sahifa ham "tayyor" bo'ladi (bo'sh) — jarayon osilib qolmasin
+                            repo.saveOcr(projectId, pageId, result ?: OcrPage(0, 0, language, emptyList()))
                             val n = done.incrementAndGet()
                             setProgress(workDataOf(KEY_DONE to n, KEY_TOTAL to total.get()))
                             notifyProgress(n, total.get())
@@ -109,6 +125,10 @@ class OcrWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
             }.awaitAll()
         }
         return Result.success()
+    }
+
+    private fun cancelNotification() {
+        applicationContext.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 
     private suspend fun detectLanguage(projectId: String, pageIds: List<String>): String? =
