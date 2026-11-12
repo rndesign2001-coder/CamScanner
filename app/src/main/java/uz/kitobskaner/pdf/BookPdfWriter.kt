@@ -350,7 +350,7 @@ class BookPdfWriter(private val context: Context, private val settings: AppSetti
         val brand = textPaint(fontSize * 0.75f, fonts.regular).apply {
             color = Color.rgb(140, 140, 150); textAlign = Paint.Align.CENTER
         }
-        c.drawText("Kitob Skaner", pageW * S / 2, (pageH - marginBottom) * S, brand)
+        c.drawText("QulayOfis", pageW * S / 2, (pageH - marginBottom) * S, brand)
         finishPage()
     }
 

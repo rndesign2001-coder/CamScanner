@@ -179,7 +179,7 @@ fun ExportScreen(projectId: String, onBack: () -> Unit, onDone: (File) -> Unit) 
             CenterAlignedTopAppBar(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null) } },
                 title = { Text(if (total > 0) "${pager.currentPage + 1} / $total" else stringResource(R.string.export_title)) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
             )
         },
         bottomBar = {

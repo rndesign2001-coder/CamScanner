@@ -35,8 +35,8 @@ class ImagePdfWriter(private val context: Context, private val settings: AppSett
         try {
             doc.documentInformation = PDDocumentInformation().apply {
                 this.title = title
-                creator = "Kitob Skaner"
-                producer = "Kitob Skaner"
+                creator = "QulayOfis"
+                producer = "QulayOfis"
                 creationDate = Calendar.getInstance()
             }
             val font = if (searchable) {

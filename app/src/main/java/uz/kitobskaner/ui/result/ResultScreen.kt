@@ -27,7 +27,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Approval
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Email
@@ -99,7 +101,14 @@ private const val WHATSAPP = "com.whatsapp"
 /** Tayyor fayl: ko'rib chiqish, ulashish, saqlash (TapScanner "Share" ekrani kabi). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ResultScreen(path: String, onClose: () -> Unit, onHome: () -> Unit, onCompress: (String) -> Unit) {
+fun ResultScreen(
+    path: String,
+    onClose: () -> Unit,
+    onHome: () -> Unit,
+    onCompress: (String) -> Unit,
+    onSign: (String) -> Unit,
+    onOpenInApp: (String) -> Unit,
+) {
     val context = LocalContext.current
     val exporter = App.instance.exporter
     val file = remember(path) { File(path) }
@@ -139,7 +148,7 @@ fun ResultScreen(path: String, onClose: () -> Unit, onHome: () -> Unit, onCompre
                 navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, null) } },
                 title = { Text(stringResource(R.string.ready_title)) },
                 actions = { IconButton(onClick = onHome) { Icon(Icons.Rounded.Home, null) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
             )
         },
         bottomBar = {
@@ -252,6 +261,12 @@ fun ResultScreen(path: String, onClose: () -> Unit, onHome: () -> Unit, onCompre
             ActionRow(Icons.Rounded.SaveAs, stringResource(R.string.save_as), stringResource(R.string.save_as_sub)) {
                 saveAs.launch(file.name to mime)
             }
+            if (isPdf) ActionRow(Icons.Rounded.Approval, stringResource(R.string.sign_place_pdf), stringResource(R.string.sign_place_sub)) {
+                onSign(file.absolutePath)
+            }
+            if (file.extension.lowercase() in setOf("pdf", "docx", "xlsx", "txt")) ActionRow(
+                Icons.Rounded.Visibility, stringResource(R.string.open_in_app), stringResource(R.string.open_in_app_sub)
+            ) { onOpenInApp(file.absolutePath) }
             if (isPdf) ActionRow(Icons.Rounded.Compress, stringResource(R.string.tool_compress), stringResource(R.string.tool_compress_sub)) {
                 onCompress(file.absolutePath)
             }

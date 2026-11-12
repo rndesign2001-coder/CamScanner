@@ -225,12 +225,12 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
             )
         },
         bottomBar = {
             if (!editing) {
-                Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest) {
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -312,7 +312,7 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
 
 private fun copyText(context: Context, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("Kitob Skaner", text))
+    cm.setPrimaryClip(ClipData.newPlainText("QulayOfis", text))
     Toast.makeText(context, context.getString(R.string.text_copied), Toast.LENGTH_SHORT).show()
 }
 

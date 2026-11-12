@@ -16,6 +16,8 @@ class App : Application() {
         private set
     lateinit var exporter: Exporter
         private set
+    lateinit var signatures: uz.kitobskaner.data.SignatureStore
+        private set
 
     val settings: StateFlow<AppSettings> get() = settingsStore.state
 
@@ -25,6 +27,7 @@ class App : Application() {
         settingsStore = SettingsStore(this)
         repository = ProjectRepository(this, settingsStore)
         exporter = Exporter(this, repository)
+        signatures = uz.kitobskaner.data.SignatureStore(this)
         OcrWorker.ensureChannel(this)
         // OCR modellarini oldindan tayyorlab qo'yamiz (birinchi skanerlash tezroq boshlanadi)
         Thread {

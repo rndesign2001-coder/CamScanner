@@ -42,12 +42,12 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/KitobSkaner-1.0.${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/QulayOfis-1.0.${{ github.run_number }}.apk"
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: KitobSkaner-apk
+          name: QulayOfis-apk
           path: dist/*.apk
 
       - name: Publish GitHub Release
@@ -55,14 +55,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: Kitob Skaner 1.0.${{ github.run_number }}
+          name: QulayOfis 1.0.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: true
           files: dist/*.apk
           body: |
-            📚 **Kitob Skaner** — kitoblarni skanerlab, matnini ajratib, chiroyli PDF kitob yaratadigan ilova.
+            📚 **QulayOfis** — kitoblarni skanerlab, matnini ajratib, chiroyli PDF kitob yaratadigan ilova.
 
-            **O'rnatish:** quyidagi `KitobSkaner-*.apk` faylini telefoningizga yuklab oling va oching
+            **O'rnatish:** quyidagi `QulayOfis-*.apk` faylini telefoningizga yuklab oling va oching
             ("Noma'lum manbalardan o'rnatish"ga ruxsat bering).
 
             Branch: `${{ github.ref_name }}` • Commit: `${{ github.sha }}`

@@ -211,12 +211,12 @@ fun ProjectScreen(
                             }
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
                 )
             }
         },
         bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp, shadowElevation = 8.dp) {
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest) {
                 Row(
                     Modifier
                         .fillMaxWidth()

@@ -153,7 +153,7 @@ class Exporter(private val context: Context, private val repo: ProjectRepository
         return project.pages.size
     }
 
-    /** Sahifa rasmlarini galereyaga (Pictures/KitobSkaner) saqlaydi. @return saqlanganlar soni */
+    /** Sahifa rasmlarini galereyaga (Pictures/QulayOfis) saqlaydi. @return saqlanganlar soni */
     suspend fun saveImagesToGallery(project: Project, settings: AppSettings, onProgress: (Float) -> Unit): Int =
         withContext(Dispatchers.IO) {
             var n = 0
@@ -174,13 +174,13 @@ class Exporter(private val context: Context, private val repo: ProjectRepository
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, name)
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/KitobSkaner")
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/QulayOfis")
             }
             val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
             uri != null && context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } != null
         } else {
             @Suppress("DEPRECATION")
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "KitobSkaner")
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "QulayOfis")
             dir.mkdirs()
             File(dir, name).writeBytes(bytes)
             true
@@ -190,7 +190,7 @@ class Exporter(private val context: Context, private val repo: ProjectRepository
     }
 
     /**
-     * Faylni "Yuklanmalar/KitobSkaner" papkasiga saqlaydi (Android 10+).
+     * Faylni "Yuklanmalar/QulayOfis" papkasiga saqlaydi (Android 10+).
      * @return saqlangan joy URI yoki null (eski Android — tizim oynasi orqali saqlash kerak)
      */
     fun saveToDownloads(file: File, mime: String): Uri? {
@@ -199,7 +199,7 @@ class Exporter(private val context: Context, private val repo: ProjectRepository
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, file.name)
                 put(MediaStore.Downloads.MIME_TYPE, mime)
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/KitobSkaner")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/QulayOfis")
             }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
             context.contentResolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }

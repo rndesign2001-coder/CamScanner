@@ -11,11 +11,11 @@ import java.util.zip.ZipOutputStream
 /** Tahrirlanadigan Word (DOCX) hujjati: sarlavhalar, qalin/kursiv, she'rlar va rasmlar bilan. */
 object DocxWriter {
 
-    fun write(title: String, blocks: List<TextBlock>, imagesDir: File, out: OutputStream) {
+    fun write(title: String, blocks: List<TextBlock>, imagesDir: File, out: OutputStream, withTitle: Boolean = true) {
         val images = ArrayList<Pair<String, File>>() // rId -> fayl
         val body = StringBuilder()
 
-        body.append(paragraph("Title", "center", run(title, bold = true, italic = false)))
+        if (withTitle) body.append(paragraph("Title", "center", run(title, bold = true, italic = false)))
         var imageNo = 0
         for (b in blocks) {
             when (b.type) {

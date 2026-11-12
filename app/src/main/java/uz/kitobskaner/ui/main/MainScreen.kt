@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Compress
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -129,6 +130,8 @@ fun MainScreen(
     onSettings: () -> Unit,
     onCompress: () -> Unit,
     onConvert: (String?) -> Unit,
+    onOpenDoc: (android.net.Uri) -> Unit,
+    onSign: () -> Unit,
 ) {
     val context = LocalContext.current
     val app = App.instance
@@ -164,12 +167,28 @@ fun MainScreen(
     }
     val openPdf = { pdfPicker.launch(arrayOf("application/pdf")) }
 
+    val docPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onOpenDoc(uri)
+    }
+    val openDoc = {
+        docPicker.launch(
+            arrayOf(
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "text/*",
+            )
+        )
+    }
     val tools = listOf(
         Tool(Icons.Rounded.DocumentScanner, R.string.tool_scan, R.string.tool_scan_sub, listOf(Color(0xFF6366F1), Color(0xFF9333EA))) { showSource = true },
-        Tool(Icons.Rounded.PhotoLibrary, R.string.tool_images_pdf, R.string.tool_images_pdf_sub, listOf(Color(0xFF0EA5E9), Color(0xFF6366F1))) { source.gallery() },
-        Tool(Icons.Rounded.TextFields, R.string.tool_pdf_ocr, R.string.tool_pdf_ocr_sub, listOf(Color(0xFF10B981), Color(0xFF0EA5E9))) { openPdf() },
+        Tool(Icons.Rounded.FolderOpen, R.string.tool_open_doc, R.string.tool_open_doc_sub, listOf(Color(0xFF0EA5E9), Color(0xFF2563EB))) { openDoc() },
+        Tool(Icons.Rounded.Draw, R.string.tool_sign, R.string.tool_sign_sub, listOf(Color(0xFF8B5CF6), Color(0xFFDB2777))) { onSign() },
         Tool(Icons.Rounded.Compress, R.string.tool_compress, R.string.tool_compress_sub, listOf(Color(0xFFF59E0B), Color(0xFFEF4444))) { onCompress() },
         Tool(Icons.Rounded.Description, R.string.tool_pdf_word, R.string.tool_pdf_word_sub, listOf(Color(0xFF2563EB), Color(0xFF1D4ED8))) { onConvert("docx") },
+        Tool(Icons.Rounded.PhotoLibrary, R.string.tool_images_pdf, R.string.tool_images_pdf_sub, listOf(Color(0xFF0EA5E9), Color(0xFF6366F1))) { source.gallery() },
+        Tool(Icons.Rounded.TextFields, R.string.tool_pdf_ocr, R.string.tool_pdf_ocr_sub, listOf(Color(0xFF10B981), Color(0xFF0EA5E9))) { openPdf() },
         Tool(Icons.Rounded.Image, R.string.tool_pdf_jpg, R.string.tool_pdf_jpg_sub, listOf(Color(0xFF22C55E), Color(0xFF15803D))) { onConvert("jpg") },
         Tool(Icons.Rounded.TableChart, R.string.tool_pdf_excel, R.string.tool_pdf_excel_sub, listOf(Color(0xFF16A34A), Color(0xFF0F766E))) { onConvert("xlsx") },
         Tool(Icons.AutoMirrored.Rounded.Article, R.string.tool_pdf_txt, R.string.tool_pdf_txt_sub, listOf(Color(0xFF64748B), Color(0xFF334155))) { onConvert("txt") },

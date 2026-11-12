@@ -133,7 +133,7 @@ fun CompressScreen(initialPath: String?, onBack: () -> Unit, onDone: (File) -> U
             CenterAlignedTopAppBar(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null) } },
                 title = { Text(stringResource(R.string.tool_compress)) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
             )
         },
         bottomBar = {

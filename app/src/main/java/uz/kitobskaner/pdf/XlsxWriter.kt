@@ -21,7 +21,11 @@ object XlsxWriter {
     fun writeRows(sheets: List<List<List<String>>>, out: OutputStream) =
         writeSheets(sheets.map { rows -> rows.map { r -> r.mapIndexed { i, t -> Cell(t, i * 1000, false) } } }, out)
 
-    private fun writeSheets(input: List<List<List<Cell>>>, out: OutputStream) {
+    /** Nomli varaqlar (jadval muharriri uchun): kataklar ustunlari aynan saqlanadi. */
+    fun writeNamed(sheets: List<Pair<String, List<List<String>>>>, out: OutputStream) =
+        writeSheets(sheets.map { (_, rows) -> rows.map { r -> r.mapIndexed { i, t -> Cell(t, i * 1000, false) } } }, out, sheets.map { it.first })
+
+    private fun writeSheets(input: List<List<List<Cell>>>, out: OutputStream, names: List<String>? = null) {
         val sheets = input.ifEmpty { listOf(emptyList()) }
         val zip = ZipOutputStream(out)
         fun put(name: String, content: String) {
@@ -59,7 +63,8 @@ object XlsxWriter {
                 "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
         )
         sheets.indices.forEach {
-            wb.append("<sheet name=\"${it + 1}\" sheetId=\"${it + 1}\" r:id=\"rId${it + 1}\"/>")
+            val nm = escape(names?.getOrNull(it)?.take(31)?.ifBlank { null } ?: "${it + 1}").replace(Regex("[\\\\/*?:\\[\\]]"), "_")
+            wb.append("<sheet name=\"$nm\" sheetId=\"${it + 1}\" r:id=\"rId${it + 1}\"/>")
             rels.append("<Relationship Id=\"rId${it + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet${it + 1}.xml\"/>")
         }
         wb.append("</sheets></workbook>")

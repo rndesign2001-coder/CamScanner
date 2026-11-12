@@ -5,7 +5,7 @@
     <string name="add_pages">Sahifa qo\'shish</string>
     <string name="advanced">Qo\'shimcha sozlamalar</string>
     <string name="all_tools">Barcha asboblar</string>
-    <string name="app_name" translatable="false">Kitob Skaner</string>
+    <string name="app_name" translatable="false">QulayOfis</string>
     <string name="appearance">Ko\'rinish</string>
     <string name="back">Orqaga</string>
     <string name="bold_high">Yuqori — ko\'proq so\'z qalin deb belgilanadi</string>
@@ -42,7 +42,7 @@
     <string name="delete_page_q">Sahifa o\'chirilsinmi?</string>
     <string name="delete_q">O\'chirilsinmi?</string>
     <string name="done">Tayyor</string>
-    <string name="downloads_folder">Yuklanmalar / KitobSkaner</string>
+    <string name="downloads_folder">Yuklanmalar / QulayOfis</string>
     <string name="edit">Tahrirlash</string>
     <string name="edited">Tahrirlangan</string>
     <string name="email">Email</string>
@@ -74,8 +74,8 @@
     <string name="font_serif">Serif (kitob)</string>
     <string name="font_size">Shrift o\'lchami: %1$s pt</string>
     <string name="from">Qayerdan</string>
-    <string name="hero_subtitle">Suratga oling yoki rasm/PDF tanlang — matn ajratiladi, qalin yozuvlar saqlanadi va chiroyli PDF kitob tayyorlanadi.</string>
-    <string name="hero_title">Kitobingizni\nraqamli nashrga aylantiring</string>
+    <string name="hero_subtitle">Skanerlang, matnni ajrating, Word/Excel/PDF\'ni oching va tahrirlang, imzo va muhr qo\'ying — internetsiz.</string>
+    <string name="hero_title">Hujjatlar, kitoblar,\nimzolar — bir joyda</string>
     <string name="image_filter">Rasm filtri</string>
     <string name="image_quality">Rasm sifati</string>
     <string name="jpg_resolution">JPG aniqligi</string>
@@ -163,7 +163,7 @@
     <string name="save_as">Boshqa joyga saqlash…</string>
     <string name="save_as_sub">Papka yoki Google Drive\'ni tanlang</string>
     <string name="save_downloads">Yuklanmalarga saqlash</string>
-    <string name="save_downloads_sub">Download/KitobSkaner papkasiga</string>
+    <string name="save_downloads_sub">Download/QulayOfis papkasiga</string>
     <string name="save_error">Saqlashda xatolik</string>
     <string name="save_to">Qayerga saqlash</string>
     <string name="saved_ok">Saqlandi ✓</string>
@@ -219,4 +219,29 @@
     <string name="tools_subtitle">PDF bilan ishlash uchun hamma narsa</string>
     <string name="ui_language">Ilova tili</string>
     <string name="yes_rerecognize">Ha, qayta aniqlash</string>
+    <string name="err_open_doc">Faylni ochib bo\'lmadi (format qo\'llab-quvvatlanmaydi yoki fayl buzilgan)</string>
+    <string name="ink_black">Qora</string>
+    <string name="ink_blue">Ko\'k</string>
+    <string name="ink_red">Qizil</string>
+    <string name="open_in_app">Ilovada ochish</string>
+    <string name="open_in_app_sub">Ko\'rish va tahrirlash</string>
+    <string name="sign_draw">Imzo chizish</string>
+    <string name="sign_draw_sub">Barmoq bilan ekranga chizing</string>
+    <string name="sign_empty">Hali imzo yoki muhr yo\'q</string>
+    <string name="sign_empty_hint">Avval rasmdan ajrating yoki imzo chizing</string>
+    <string name="sign_extract">Rasmdan ajratish</string>
+    <string name="sign_extract_hint">Qog\'ozdagi imzo yoki muhrni suratga oling — fon olib tashlanadi, faqat siyoh qoladi</string>
+    <string name="sign_extract_sub">Imzo/muhr suratidan fonni olib tashlash</string>
+    <string name="sign_kind_sign">Imzo</string>
+    <string name="sign_kind_stamp">Muhr</string>
+    <string name="sign_library">Mening imzo va muhrlarim</string>
+    <string name="sign_place_pdf">PDF\'ga imzo/muhr qo\'yish</string>
+    <string name="sign_place_sub">Sahifaga joylang, kattalashtiring, buring</string>
+    <string name="sign_sensitivity">Sezgirlik (xira chiziqlar)</string>
+    <string name="sign_title">Imzo va muhr</string>
+    <string name="src_gallery_short">Galereya</string>
+    <string name="tool_open_doc">Hujjat ochish</string>
+    <string name="tool_open_doc_sub">Word, Excel, PowerPoint, PDF, TXT</string>
+    <string name="tool_sign">Imzo va muhr</string>
+    <string name="tool_sign_sub">Ajratish, chizish, PDF\'ga qo\'yish</string>
 </resources>

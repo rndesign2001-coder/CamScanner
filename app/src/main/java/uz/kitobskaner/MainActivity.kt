@@ -34,6 +34,11 @@ import uz.kitobskaner.ui.page.PageScreen
 import uz.kitobskaner.ui.project.ProjectScreen
 import uz.kitobskaner.ui.result.ResultScreen
 import uz.kitobskaner.ui.settings.SettingsScreen
+import uz.kitobskaner.ui.office.DocumentScreen
+import uz.kitobskaner.ui.sign.DrawSignatureScreen
+import uz.kitobskaner.ui.sign.ExtractScreen
+import uz.kitobskaner.ui.sign.PlaceScreen
+import uz.kitobskaner.ui.sign.SignaturesScreen
 import uz.kitobskaner.ui.theme.KitobTheme
 import uz.kitobskaner.ui.tools.CompressScreen
 import uz.kitobskaner.ui.tools.ConvertScreen
@@ -47,11 +52,14 @@ object Routes {
     fun result(path: String) = "result?path=" + URLEncoder.encode(path, "UTF-8")
     fun compress(path: String? = null) = "compress" + (path?.let { "?path=" + URLEncoder.encode(it, "UTF-8") } ?: "")
     fun convert(target: String? = null) = "convert" + (target?.let { "?target=$it" } ?: "")
+    fun doc(uri: Uri) = "doc?uri=" + URLEncoder.encode(uri.toString(), "UTF-8")
+    fun place(uri: Uri) = "sign/place?uri=" + URLEncoder.encode(uri.toString(), "UTF-8")
 }
 
 class MainActivity : ComponentActivity() {
 
     private val openProject = MutableStateFlow<String?>(null)
+    private val openDoc = MutableStateFlow<Uri?>(null)
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -82,6 +90,13 @@ class MainActivity : ComponentActivity() {
                         openProject.value = null
                     }
                 }
+                val pendingDoc by openDoc.collectAsState()
+                LaunchedEffect(pendingDoc) {
+                    pendingDoc?.let {
+                        nav.navigate(Routes.doc(it))
+                        openDoc.value = null
+                    }
+                }
                 NavHost(
                     navController = nav,
                     startDestination = "main",
@@ -97,6 +112,8 @@ class MainActivity : ComponentActivity() {
                             onSettings = { nav.navigate("settings") },
                             onCompress = { nav.navigate(Routes.compress()) },
                             onConvert = { nav.navigate(Routes.convert(it)) },
+                            onOpenDoc = { nav.navigate(Routes.doc(it)) },
+                            onSign = { nav.navigate("sign") },
                         )
                     }
                     composable("project/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
@@ -137,6 +154,8 @@ class MainActivity : ComponentActivity() {
                             onClose = { nav.popBackStack() },
                             onHome = { nav.popBackStack("main", inclusive = false) },
                             onCompress = { p -> nav.navigate(Routes.compress(p)) },
+                            onSign = { p -> nav.navigate(Routes.place(Uri.fromFile(java.io.File(p)))) },
+                            onOpenInApp = { p -> nav.navigate(Routes.doc(Uri.fromFile(java.io.File(p)))) },
                         )
                     }
                     composable(
@@ -161,6 +180,36 @@ class MainActivity : ComponentActivity() {
                             onOpenProject = { id -> nav.navigate(Routes.project(id)) { popUpTo("main") } },
                         )
                     }
+                    composable("sign") {
+                        SignaturesScreen(
+                            onBack = { nav.popBackStack() },
+                            onExtract = { nav.navigate("sign/extract") },
+                            onDraw = { nav.navigate("sign/draw") },
+                            onPlace = { nav.navigate(Routes.place(it)) },
+                        )
+                    }
+                    composable("sign/extract") { ExtractScreen(onBack = { nav.popBackStack() }) }
+                    composable("sign/draw") { DrawSignatureScreen(onBack = { nav.popBackStack() }) }
+                    composable(
+                        "sign/place?uri={uri}",
+                        arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" })
+                    ) {
+                        val u = Uri.parse(URLDecoder.decode(it.arguments?.getString("uri") ?: "", "UTF-8"))
+                        PlaceScreen(src = u, onBack = { nav.popBackStack() }, onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) })
+                    }
+                    composable(
+                        "doc?uri={uri}",
+                        arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" })
+                    ) {
+                        val u = Uri.parse(URLDecoder.decode(it.arguments?.getString("uri") ?: "", "UTF-8"))
+                        DocumentScreen(
+                            uri = u,
+                            onBack = { nav.popBackStack() },
+                            onOpenFile = { f -> nav.navigate(Routes.result(f.absolutePath)) },
+                            onSign = { nav.navigate(Routes.place(it)) },
+                            onCompress = { p -> nav.navigate(Routes.compress(p)) },
+                        )
+                    }
                     composable("settings") {
                         SettingsScreen(onBack = { nav.popBackStack() }, onLanguageChanged = { recreate() })
                     }
@@ -176,6 +225,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handleShare(intent: Intent?) {
         intent ?: return
+        if (intent.action == Intent.ACTION_VIEW) {
+            intent.data?.let { openDoc.value = it }
+            return
+        }
         val uris: List<Uri> = when (intent.action) {
             Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
             Intent.ACTION_SEND_MULTIPLE ->

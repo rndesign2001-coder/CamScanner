@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.unit.sp
 import uz.kitobskaner.data.Palette
 import uz.kitobskaner.data.ThemeMode
@@ -72,13 +73,13 @@ private fun lightScheme(s: PaletteSpec): ColorScheme = lightColorScheme(
     tertiary = s.tertiary,
     tertiaryContainer = lerp(s.tertiary, White, 0.82f),
     onTertiaryContainer = lerp(s.tertiary, Color.Black, 0.62f),
-    background = lerp(s.primary, White, 0.965f),
+    background = Color.Transparent,
     onBackground = Color(0xFF14142B),
-    surface = White,
+    surface = White.copy(alpha = 0.62f),
     onSurface = Color(0xFF14142B),
-    surfaceVariant = lerp(s.primary, White, 0.92f),
-    onSurfaceVariant = Color(0xFF5B5D78),
-    surfaceContainerLowest = White,
+    surfaceVariant = lerp(s.primary, White, 0.9f).copy(alpha = 0.8f),
+    onSurfaceVariant = Color(0xFF54566F),
+    surfaceContainerLowest = lerp(s.primary, White, 0.96f).copy(alpha = 0.93f),
     surfaceContainerLow = lerp(s.primary, White, 0.975f),
     surfaceContainer = lerp(s.primary, White, 0.95f),
     surfaceContainerHigh = lerp(s.primary, White, 0.92f),
@@ -102,13 +103,13 @@ private fun darkScheme(s: PaletteSpec): ColorScheme {
         tertiary = lerp(s.tertiary, White, 0.35f),
         tertiaryContainer = lerp(s.tertiary, Night, 0.6f),
         onTertiaryContainer = lerp(s.tertiary, White, 0.85f),
-        background = lerp(s.primary, Night, 0.93f),
+        background = Color.Transparent,
         onBackground = Color(0xFFE7E7F3),
-        surface = lerp(s.primary, Night, 0.88f),
+        surface = White.copy(alpha = 0.08f),
         onSurface = Color(0xFFE7E7F3),
-        surfaceVariant = lerp(s.primary, Night, 0.8f),
-        onSurfaceVariant = Color(0xFFB4B6CF),
-        surfaceContainerLowest = lerp(s.primary, Night, 0.95f),
+        surfaceVariant = White.copy(alpha = 0.12f),
+        onSurfaceVariant = Color(0xFFB9BBD3),
+        surfaceContainerLowest = lerp(s.primary, Night, 0.9f).copy(alpha = 0.93f),
         surfaceContainerLow = lerp(s.primary, Night, 0.9f),
         surfaceContainer = lerp(s.primary, Night, 0.86f),
         surfaceContainerHigh = lerp(s.primary, Night, 0.82f),
@@ -134,12 +135,12 @@ private val AppTypography = Typography().let { t ->
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(36.dp),
 )
 
-class Brand(val gradient: Brush, val colors: List<Color>, val isDark: Boolean)
+class Brand(val gradient: Brush, val colors: List<Color>, val isDark: Boolean, val base: Color = Color.White)
 
 val LocalBrand = staticCompositionLocalOf {
     Brand(Brush.linearGradient(spec(Palette.INDIGO).gradient), spec(Palette.INDIGO).gradient, false)
@@ -164,7 +165,13 @@ fun KitobTheme(mode: ThemeMode, palette: Palette, content: @Composable () -> Uni
     val gradColors = if (palette == Palette.DYNAMIC && Build.VERSION.SDK_INT >= 31) {
         listOf(scheme.primary, lerp(scheme.primary, scheme.tertiary, 0.5f), scheme.tertiary)
     } else if (dark) s.gradient.map { lerp(it, Night, 0.18f) } else s.gradient
-    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark)) {
-        MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes, content = content)
+    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark, if (dark) lerp(scheme.primary, Night, 0.9f) else lerp(scheme.primary, White, 0.9f))) {
+        MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes) {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                GlassBackdrop()
+                content()
+            }
+        }
     }
 }
+
