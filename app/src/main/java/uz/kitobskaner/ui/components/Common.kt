@@ -187,7 +187,7 @@ fun LanguageDialog(current: String, onDismiss: () -> Unit, onSelect: (String) ->
 /** Sahifa qo'shish: rejim (1 bet / 2 bet yoyilma) + manba. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SourceSheet(source: PageSource, onDismiss: () -> Unit, onPdf: (() -> Unit)? = null) {
+fun SourceSheet(source: PageSource, onDismiss: () -> Unit, onPdf: (() -> Unit)? = null, onBookCam: (() -> Unit)? = null) {
     val store = App.instance.settingsStore
     val settings by store.state.collectAsState()
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -223,6 +223,10 @@ fun SourceSheet(source: PageSource, onDismiss: () -> Unit, onPdf: (() -> Unit)? 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
+            if (onBookCam != null) SourceRow(
+                Icons.Rounded.AutoStories, stringResource(R.string.src_bookcam),
+                stringResource(R.string.src_bookcam_hint), Brush.linearGradient(listOf(Color(0xFF22C55E), Color(0xFF0EA5E9)))
+            ) { onDismiss(); onBookCam() }
             SourceRow(
                 Icons.Rounded.DocumentScanner, stringResource(R.string.src_scanner),
                 stringResource(R.string.src_scanner_hint), brand.gradient

@@ -243,4 +243,10 @@
     <string name="tool_open_doc_sub">Word, Excel, PowerPoint, PDF, TXT</string>
     <string name="tool_sign">Подпись и печать</string>
     <string name="tool_sign_sub">Извлечь, нарисовать, поставить в PDF</string>
+    <string name="src_bookcam">Камера для книг (автосъёмка)</string>
+    <string name="src_bookcam_hint">Листайте — страницы снимаются сами</string>
+    <string name="cam_auto_on">Автосъёмка: вкл</string>
+    <string name="cam_auto_off">Автосъёмка: выкл</string>
+    <string name="cam_hint_auto">Держите камеру — снимок сделается сам, затем переверните страницу</string>
+    <string name="cam_hint_manual">Нажмите кнопку для снимка</string>
 </resources>

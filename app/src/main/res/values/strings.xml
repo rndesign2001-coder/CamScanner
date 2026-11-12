@@ -244,4 +244,10 @@
     <string name="tool_open_doc_sub">Word, Excel, PowerPoint, PDF, TXT</string>
     <string name="tool_sign">Imzo va muhr</string>
     <string name="tool_sign_sub">Ajratish, chizish, PDF\'ga qo\'yish</string>
+    <string name="src_bookcam">Kitob kamerasi (avtokadr)</string>
+    <string name="src_bookcam_hint">Varaqlang — sahifalar o\'zi suratga olinadi</string>
+    <string name="cam_auto_on">Avtokadr: yoqiq</string>
+    <string name="cam_auto_off">Avtokadr: o\'chiq</string>
+    <string name="cam_hint_auto">Kamerani ushlab turing — tasvir tinchlanganda o\'zi oladi, keyin varaqni o\'giring</string>
+    <string name="cam_hint_manual">Suratga olish uchun tugmani bosing</string>
 </resources>

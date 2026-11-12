@@ -310,6 +310,7 @@ fun DocumentScreen(
 
 // ---------------------------------------------------------------- PDF
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun PdfViewer(uri: Uri) {
     val context = LocalContext.current

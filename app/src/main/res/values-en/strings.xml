@@ -243,4 +243,10 @@
     <string name="tool_open_doc_sub">Word, Excel, PowerPoint, PDF, TXT</string>
     <string name="tool_sign">Sign &amp; stamp</string>
     <string name="tool_sign_sub">Extract, draw, put on a PDF</string>
+    <string name="src_bookcam">Book camera (auto-capture)</string>
+    <string name="src_bookcam_hint">Turn the pages — they are captured automatically</string>
+    <string name="cam_auto_on">Auto: on</string>
+    <string name="cam_auto_off">Auto: off</string>
+    <string name="cam_hint_auto">Hold steady — it captures automatically, then turn the page</string>
+    <string name="cam_hint_manual">Tap the shutter to capture</string>
 </resources>

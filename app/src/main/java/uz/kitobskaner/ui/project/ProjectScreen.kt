@@ -105,6 +105,7 @@ fun ProjectScreen(
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
     onExport: () -> Unit,
+    onBookCam: () -> Unit,
 ) {
     val context = LocalContext.current
     val repo = App.instance.repository
@@ -296,7 +297,7 @@ fun ProjectScreen(
         }
     }
 
-    if (showSource) SourceSheet(source, onDismiss = { showSource = false })
+    if (showSource) SourceSheet(source, onDismiss = { showSource = false }, onBookCam = onBookCam)
     importing?.let { (d, t) -> ProgressDialog("Sahifalar qo'shilmoqda", if (t > 0) d.toFloat() / t else null, "$d / $t") }
     if (showRename) RenameDialog(p.title, stringResource(R.string.book_name), onDismiss = { showRename = false }) {
         scope.launch { repo.rename(projectId, it) }

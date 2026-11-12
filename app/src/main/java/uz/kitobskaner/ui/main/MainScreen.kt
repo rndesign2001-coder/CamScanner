@@ -132,6 +132,7 @@ fun MainScreen(
     onConvert: (String?) -> Unit,
     onOpenDoc: (android.net.Uri) -> Unit,
     onSign: () -> Unit,
+    onBookCam: () -> Unit,
 ) {
     val context = LocalContext.current
     val app = App.instance
@@ -224,7 +225,7 @@ fun MainScreen(
         }
     }
 
-    if (showSource) SourceSheet(source, onDismiss = { showSource = false }, onPdf = openPdf)
+    if (showSource) SourceSheet(source, onDismiss = { showSource = false }, onPdf = openPdf, onBookCam = onBookCam)
     importing?.let { (d, t) ->
         ProgressDialog(stringResource(R.string.preparing_pages), if (t > 0) d.toFloat() / t else null, "$d / $t")
     }

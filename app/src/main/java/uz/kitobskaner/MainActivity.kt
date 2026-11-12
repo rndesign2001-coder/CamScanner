@@ -35,6 +35,7 @@ import uz.kitobskaner.ui.project.ProjectScreen
 import uz.kitobskaner.ui.result.ResultScreen
 import uz.kitobskaner.ui.settings.SettingsScreen
 import uz.kitobskaner.ui.office.DocumentScreen
+import uz.kitobskaner.ui.camera.BookCameraScreen
 import uz.kitobskaner.ui.sign.DrawSignatureScreen
 import uz.kitobskaner.ui.sign.ExtractScreen
 import uz.kitobskaner.ui.sign.PlaceScreen
@@ -114,6 +115,7 @@ class MainActivity : ComponentActivity() {
                             onConvert = { nav.navigate(Routes.convert(it)) },
                             onOpenDoc = { nav.navigate(Routes.doc(it)) },
                             onSign = { nav.navigate("sign") },
+                            onBookCam = { nav.navigate("bookcam") },
                         )
                     }
                     composable("project/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
@@ -123,6 +125,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.popBackStack() },
                             onOpenPage = { index -> nav.navigate(Routes.page(id, index)) },
                             onExport = { nav.navigate(Routes.export(id)) },
+                            onBookCam = { nav.navigate("bookcam?project=$id") },
                         )
                     }
                     composable(
@@ -178,6 +181,20 @@ class MainActivity : ComponentActivity() {
                             onBack = { nav.popBackStack() },
                             onOpenFile = { f -> nav.navigate(Routes.result(f.absolutePath)) },
                             onOpenProject = { id -> nav.navigate(Routes.project(id)) { popUpTo("main") } },
+                        )
+                    }
+                    composable(
+                        "bookcam?project={project}",
+                        arguments = listOf(navArgument("project") { type = NavType.StringType; defaultValue = "" })
+                    ) {
+                        val pid = it.arguments?.getString("project")?.ifEmpty { null }
+                        BookCameraScreen(
+                            projectId = pid,
+                            onBack = { nav.popBackStack() },
+                            onDone = { id ->
+                                nav.popBackStack()
+                                if (pid == null) nav.navigate(Routes.project(id))
+                            },
                         )
                     }
                     composable("sign") {
