@@ -1,6 +1,5 @@
 package uz.kitobskaner.ui.theme
 
-import android.os.Build
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -25,7 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
@@ -63,7 +62,7 @@ fun GlassBackdrop(modifier: Modifier = Modifier) {
         Box(
             Modifier
                 .fillMaxSize()
-                .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(60.dp) else Modifier)
+                .graphicsLayer()
                 .drawBehind {
                     val w = size.width
                     val h = size.height

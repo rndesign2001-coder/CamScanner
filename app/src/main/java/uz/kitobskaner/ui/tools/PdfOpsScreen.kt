@@ -80,7 +80,8 @@ fun PdfOpsScreen(mode: String, onBack: () -> Unit, onDone: (File) -> Unit) {
         if (u != null) { files.clear(); files += u }
     }
     val pick = { if (merge) multi.launch(arrayOf("application/pdf")) else single.launch(arrayOf("application/pdf")) }
-    LaunchedEffect(Unit) { pick() }
+    var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { if (!asked) { asked = true; pick() } }
     val err = stringResource(R.string.pdfop_error)
     val ready = if (merge) files.size >= 2 else files.size == 1 && password.length >= 4
 

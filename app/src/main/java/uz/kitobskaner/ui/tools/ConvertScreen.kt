@@ -123,7 +123,8 @@ fun ConvertScreen(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u != null) { uri = u; name = PdfTools.displayName(context, u); results = emptyList() }
     }
-    LaunchedEffect(Unit) { if (uri == null) picker.launch(arrayOf("application/pdf")) }
+    var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { if (uri == null && !asked) { asked = true; picker.launch(arrayOf("application/pdf")) } }
     LaunchedEffect(uri) {
         val u = uri ?: return@LaunchedEffect
         withContext(Dispatchers.IO) {

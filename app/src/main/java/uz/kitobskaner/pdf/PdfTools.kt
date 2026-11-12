@@ -47,10 +47,21 @@ object PdfTools {
         return (name ?: uri.lastPathSegment ?: "document").substringBeforeLast('.')
     }
 
-    fun size(context: Context, uri: Uri): Long = try {
-        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
-    } catch (e: Exception) {
-        -1L
+    fun size(context: Context, uri: Uri): Long {
+        if (uri.scheme == "file") return uri.path?.let { File(it).length() } ?: -1L
+        try {
+            val n = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+            if (n > 0) return n
+        } catch (_: Exception) {
+        }
+        // ba'zi provayderlar uzunlikni bermaydi — metama'lumotdan olamiz
+        try {
+            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { c ->
+                if (c.moveToFirst() && !c.isNull(0)) return c.getLong(0)
+            }
+        } catch (_: Exception) {
+        }
+        return -1L
     }
 
     fun pageCount(file: File): Int = try {

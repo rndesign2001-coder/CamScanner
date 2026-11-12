@@ -433,7 +433,7 @@ private fun SheetView(sheets: SnapshotStateList<Sheet>, index: Int, onSheet: (In
     val sheet = sheets[index.coerceIn(0, sheets.size - 1)]
     // tahrirlanadigan nusxa: o'zgarish darhol ko'rinishi uchun versiya hisoblagichi
     var version by remember(sheet) { mutableIntStateOf(0) }
-    val cols = maxOf(6, (sheet.rows.maxOfOrNull { it.size } ?: 0) + 1)
+    val cols = maxOf(6, (sheet.rows.maxOfOrNull { it.size } ?: 0) + 1).coerceAtMost(40)
     val rowsCount = maxOf(20, sheet.rows.size + 5)
     val hScroll = rememberScrollState()
     val border = MaterialTheme.colorScheme.outlineVariant

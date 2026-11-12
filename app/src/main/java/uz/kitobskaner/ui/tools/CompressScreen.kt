@@ -124,7 +124,8 @@ fun CompressScreen(initialPath: String?, onBack: () -> Unit, onDone: (File) -> U
             }
         }
     }
-    LaunchedEffect(Unit) { if (uri == null) picker.launch(arrayOf("application/pdf")) }
+    var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { if (uri == null && !asked) { asked = true; picker.launch(arrayOf("application/pdf")) } }
     val errText = stringResource(R.string.compress_error)
 
     Scaffold(
