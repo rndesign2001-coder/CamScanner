@@ -24,6 +24,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        installCrashLogger()
         settingsStore = SettingsStore(this)
         repository = ProjectRepository(this, settingsStore)
         exporter = Exporter(this, repository)
@@ -36,6 +37,26 @@ class App : Application() {
             } catch (_: Throwable) {
             }
         }.apply { priority = Thread.MIN_PRIORITY }.start()
+    }
+
+    val crashFile: java.io.File get() = java.io.File(filesDir, "last_crash.txt")
+
+    /** Kutilmagan xatolik matnini faylga yozadi — keyingi ochilishda foydalanuvchi uni yubora oladi. */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                crashFile.writeText(
+                    "QulayOfis ${BuildConfig.VERSION_NAME} • Android ${android.os.Build.VERSION.RELEASE} • " +
+                        "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
+                        java.util.Date().toString() + "\n\n" + sw.toString().take(12000)
+                )
+            } catch (_: Throwable) {
+            }
+            previous?.uncaughtException(t, e)
+        }
     }
 
     companion object {

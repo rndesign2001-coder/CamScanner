@@ -249,4 +249,25 @@
     <string name="cam_auto_off">Автосъёмка: выкл</string>
     <string name="cam_hint_auto">Держите камеру — снимок сделается сам, затем переверните страницу</string>
     <string name="cam_hint_manual">Нажмите кнопку для снимка</string>
+    <string name="greet_morning">Доброе утро</string>
+    <string name="greet_day">Добрый день</string>
+    <string name="greet_evening">Добрый вечер</string>
+    <string name="recent_files">Недавние файлы</string>
+    <string name="sec_scan">Сканирование</string>
+    <string name="sec_pdf">PDF и документы</string>
+    <string name="sec_convert">Конвертация</string>
+    <string name="tool_merge">Объединить PDF</string>
+    <string name="tool_merge_sub">Несколько PDF в один файл</string>
+    <string name="tool_protect">Пароль на PDF</string>
+    <string name="tool_protect_sub">Защитить файл паролем</string>
+    <string name="merge_action">Объединить</string>
+    <string name="protect_action">Установить пароль</string>
+    <string name="merge_hint">Выберите минимум 2 PDF. Меняйте порядок стрелками.</string>
+    <string name="protect_hint">При открытии PDF будет запрошен этот пароль. Не забудьте его — восстановить нельзя.</string>
+    <string name="add_pdf">Добавить PDF</string>
+    <string name="password_min">Пароль (минимум 4 символа)</string>
+    <string name="pdfop_error">Не удалось выполнить (файл может быть защищён или повреждён)</string>
+    <string name="search_files">Поиск файлов</string>
+    <string name="crash_title">В прошлый раз произошла ошибка</string>
+    <string name="crash_text">Отправьте сведения об ошибке разработчику — это поможет быстро её исправить.</string>
 </resources>

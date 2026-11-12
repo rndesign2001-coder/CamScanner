@@ -43,18 +43,27 @@ import uz.kitobskaner.ui.sign.SignaturesScreen
 import uz.kitobskaner.ui.theme.KitobTheme
 import uz.kitobskaner.ui.tools.CompressScreen
 import uz.kitobskaner.ui.tools.ConvertScreen
-import java.net.URLDecoder
-import java.net.URLEncoder
 
 object Routes {
+    // Yo'l va URI'lar Base64 bilan uzatiladi: navigatsiya %-kodlangan belgilarni ikki marta
+    // ochib yuborib, content:// manzillarini (primary%3ADownload%2F...) buzmasligi uchun.
+    fun enc(s: String): String =
+        android.util.Base64.encodeToString(s.toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+
+    fun dec(s: String): String = try {
+        if (s.isEmpty()) "" else String(android.util.Base64.decode(s, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING))
+    } catch (e: Exception) {
+        ""
+    }
+
     fun project(id: String) = "project/$id"
     fun page(id: String, index: Int) = "page/$id/$index"
     fun export(id: String) = "export/$id"
-    fun result(path: String) = "result?path=" + URLEncoder.encode(path, "UTF-8")
-    fun compress(path: String? = null) = "compress" + (path?.let { "?path=" + URLEncoder.encode(it, "UTF-8") } ?: "")
+    fun result(path: String) = "result?path=" + Routes.enc(path)
+    fun compress(path: String? = null) = "compress" + (path?.let { "?path=" + Routes.enc(it) } ?: "")
     fun convert(target: String? = null) = "convert" + (target?.let { "?target=$it" } ?: "")
-    fun doc(uri: Uri) = "doc?uri=" + URLEncoder.encode(uri.toString(), "UTF-8")
-    fun place(uri: Uri) = "sign/place?uri=" + URLEncoder.encode(uri.toString(), "UTF-8")
+    fun doc(uri: Uri) = "doc?uri=" + Routes.enc(uri.toString())
+    fun place(uri: Uri) = "sign/place?uri=" + Routes.enc(uri.toString())
 }
 
 class MainActivity : ComponentActivity() {
@@ -116,6 +125,7 @@ class MainActivity : ComponentActivity() {
                             onOpenDoc = { nav.navigate(Routes.doc(it)) },
                             onSign = { nav.navigate("sign") },
                             onBookCam = { nav.navigate("bookcam") },
+                            onPdfOp = { nav.navigate("pdfops/$it") },
                         )
                     }
                     composable("project/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
@@ -151,7 +161,7 @@ class MainActivity : ComponentActivity() {
                         "result?path={path}",
                         arguments = listOf(navArgument("path") { type = NavType.StringType; defaultValue = "" })
                     ) {
-                        val path = URLDecoder.decode(it.arguments?.getString("path") ?: "", "UTF-8")
+                        val path = Routes.dec(it.arguments?.getString("path") ?: "")
                         ResultScreen(
                             path = path,
                             onClose = { nav.popBackStack() },
@@ -165,7 +175,7 @@ class MainActivity : ComponentActivity() {
                         "compress?path={path}",
                         arguments = listOf(navArgument("path") { type = NavType.StringType; defaultValue = "" })
                     ) {
-                        val path = URLDecoder.decode(it.arguments?.getString("path") ?: "", "UTF-8")
+                        val path = Routes.dec(it.arguments?.getString("path") ?: "")
                         CompressScreen(
                             initialPath = path.ifEmpty { null },
                             onBack = { nav.popBackStack() },
@@ -197,6 +207,13 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
+                    composable("pdfops/{mode}", arguments = listOf(navArgument("mode") { type = NavType.StringType })) {
+                        uz.kitobskaner.ui.tools.PdfOpsScreen(
+                            mode = it.arguments?.getString("mode") ?: "merge",
+                            onBack = { nav.popBackStack() },
+                            onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) { popUpTo("main") } },
+                        )
+                    }
                     composable("sign") {
                         SignaturesScreen(
                             onBack = { nav.popBackStack() },
@@ -211,14 +228,14 @@ class MainActivity : ComponentActivity() {
                         "sign/place?uri={uri}",
                         arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" })
                     ) {
-                        val u = Uri.parse(URLDecoder.decode(it.arguments?.getString("uri") ?: "", "UTF-8"))
+                        val u = Uri.parse(Routes.dec(it.arguments?.getString("uri") ?: ""))
                         PlaceScreen(src = u, onBack = { nav.popBackStack() }, onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) })
                     }
                     composable(
                         "doc?uri={uri}",
                         arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" })
                     ) {
-                        val u = Uri.parse(URLDecoder.decode(it.arguments?.getString("uri") ?: "", "UTF-8"))
+                        val u = Uri.parse(Routes.dec(it.arguments?.getString("uri") ?: ""))
                         DocumentScreen(
                             uri = u,
                             onBack = { nav.popBackStack() },

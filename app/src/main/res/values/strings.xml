@@ -250,4 +250,25 @@
     <string name="cam_auto_off">Avtokadr: o\'chiq</string>
     <string name="cam_hint_auto">Kamerani ushlab turing — tasvir tinchlanganda o\'zi oladi, keyin varaqni o\'giring</string>
     <string name="cam_hint_manual">Suratga olish uchun tugmani bosing</string>
+    <string name="greet_morning">Xayrli tong</string>
+    <string name="greet_day">Xayrli kun</string>
+    <string name="greet_evening">Xayrli kech</string>
+    <string name="recent_files">So\'nggi fayllar</string>
+    <string name="sec_scan">Skanerlash</string>
+    <string name="sec_pdf">PDF va hujjatlar</string>
+    <string name="sec_convert">Konvertatsiya</string>
+    <string name="tool_merge">PDF birlashtirish</string>
+    <string name="tool_merge_sub">Bir nechta PDF\'ni bitta faylga</string>
+    <string name="tool_protect">PDF\'ga parol</string>
+    <string name="tool_protect_sub">Faylni parol bilan himoyalash</string>
+    <string name="merge_action">Birlashtirish</string>
+    <string name="protect_action">Parol qo\'yish</string>
+    <string name="merge_hint">Kamida 2 ta PDF tanlang. Strelkalar bilan tartibini o\'zgartiring.</string>
+    <string name="protect_hint">PDF ochilganda shu parol so\'raladi. Parolni unutmang — uni tiklab bo\'lmaydi.</string>
+    <string name="add_pdf">PDF qo\'shish</string>
+    <string name="password_min">Parol (kamida 4 belgi)</string>
+    <string name="pdfop_error">Amalni bajarib bo\'lmadi (fayl shifrlangan yoki buzilgan bo\'lishi mumkin)</string>
+    <string name="search_files">Fayllarni qidirish</string>
+    <string name="crash_title">Oldingi safar xatolik yuz berdi</string>
+    <string name="crash_text">Xatolik tafsilotlarini ishlab chiquvchiga yuborsangiz, uni tezda tuzatish mumkin bo\'ladi.</string>
 </resources>

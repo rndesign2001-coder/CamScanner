@@ -249,4 +249,25 @@
     <string name="cam_auto_off">Auto: off</string>
     <string name="cam_hint_auto">Hold steady — it captures automatically, then turn the page</string>
     <string name="cam_hint_manual">Tap the shutter to capture</string>
+    <string name="greet_morning">Good morning</string>
+    <string name="greet_day">Good afternoon</string>
+    <string name="greet_evening">Good evening</string>
+    <string name="recent_files">Recent files</string>
+    <string name="sec_scan">Scanning</string>
+    <string name="sec_pdf">PDF &amp; documents</string>
+    <string name="sec_convert">Convert</string>
+    <string name="tool_merge">Merge PDFs</string>
+    <string name="tool_merge_sub">Several PDFs into one file</string>
+    <string name="tool_protect">Password-protect PDF</string>
+    <string name="tool_protect_sub">Lock the file with a password</string>
+    <string name="merge_action">Merge</string>
+    <string name="protect_action">Set password</string>
+    <string name="merge_hint">Pick at least 2 PDFs. Reorder with the arrows.</string>
+    <string name="protect_hint">This password will be required to open the PDF. Don\'t forget it — it can\'t be recovered.</string>
+    <string name="add_pdf">Add PDF</string>
+    <string name="password_min">Password (at least 4 characters)</string>
+    <string name="pdfop_error">Operation failed (the file may be encrypted or damaged)</string>
+    <string name="search_files">Search files</string>
+    <string name="crash_title">The app crashed last time</string>
+    <string name="crash_text">Send the error details to the developer so it can be fixed quickly.</string>
 </resources>

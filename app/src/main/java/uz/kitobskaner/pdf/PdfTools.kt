@@ -227,4 +227,43 @@ object PdfTools {
             }
         }
     }
+
+    /** Bir nechta PDF'ni ketma-ket bitta faylga birlashtiradi. */
+    suspend fun merge(context: Context, uris: List<Uri>, out: File) = withContext(Dispatchers.IO) {
+        PDFBoxResourceLoader.init(context.applicationContext)
+        val merger = com.tom_roush.pdfbox.multipdf.PDFMergerUtility()
+        val streams = ArrayList<java.io.InputStream>()
+        try {
+            for (u in uris) {
+                val input = context.contentResolver.openInputStream(u) ?: throw IllegalArgumentException("open")
+                streams += input
+                merger.addSource(input)
+            }
+            out.parentFile?.mkdirs()
+            out.outputStream().buffered().use { o ->
+                merger.destinationStream = o
+                merger.mergeDocuments(MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir))
+            }
+        } finally {
+            streams.forEach { try { it.close() } catch (_: Exception) {} }
+        }
+    }
+
+    /** PDF'ni parol bilan himoyalaydi (ochish uchun parol so'raladi). */
+    suspend fun protect(context: Context, uri: Uri, password: String, out: File) = withContext(Dispatchers.Default) {
+        PDFBoxResourceLoader.init(context.applicationContext)
+        val input = context.contentResolver.openInputStream(uri) ?: throw IllegalArgumentException("open")
+        val doc = input.use { PDDocument.load(it, MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)) }
+        try {
+            val policy = com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy(
+                password, password, com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission()
+            )
+            policy.encryptionKeyLength = 128
+            doc.protect(policy)
+            out.parentFile?.mkdirs()
+            out.outputStream().buffered().use { doc.save(it) }
+        } finally {
+            doc.close()
+        }
+    }
 }

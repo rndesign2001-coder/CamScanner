@@ -258,7 +258,14 @@ private fun SourceRow(icon: ImageVector, title: String, subtitle: String, brush:
             .clickable(onClick = onClick),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            GradientIcon(icon, brush, 48.dp)
+            val res = when (icon) {
+                Icons.Rounded.AutoStories -> R.drawable.ic3d_book
+                Icons.Rounded.DocumentScanner -> R.drawable.ic3d_scan
+                Icons.Rounded.PhotoLibrary -> R.drawable.ic3d_gallery
+                Icons.Rounded.CameraAlt -> R.drawable.ic3d_jpg
+                else -> R.drawable.ic3d_pdf
+            }
+            androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(res), null, Modifier.size(50.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
@@ -389,4 +396,10 @@ fun ConfirmDialog(title: String, text: String?, confirm: String, destructive: Bo
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/** 3D ikonka (Fluent Emoji 3D, MIT litsenziyasi). */
+@Composable
+fun Icon3D(res: Int, size: Dp = 48.dp, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(res), null, modifier.size(size))
 }
