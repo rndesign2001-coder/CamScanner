@@ -130,7 +130,7 @@
     <string name="pal_dynamic">Material You</string>
     <string name="pal_emerald">Emerald</string>
     <string name="pal_graphite">Graphite</string>
-    <string name="pal_indigo">Indigo</string>
+    <string name="pal_indigo">QulayOfis</string>
     <string name="pal_ocean">Ocean</string>
     <string name="pal_rose">Rose</string>
     <string name="pal_sunset">Sunset</string>
@@ -272,4 +272,5 @@
     <string name="crash_text">Send the error details to the developer so it can be fixed quickly.</string>
     <string name="search_in_doc">Search in document</string>
     <string name="legacy_format">This is a legacy-format file (DOC, XLS, PPT, RTF or ODF). QulayOfis opens modern DOCX, XLSX, PPTX, PDF, CSV and TXT. Re-save it as DOCX/XLSX/PPTX in Word/Excel/WPS or ask the sender for the new format.</string>
+    <string name="err_encrypted">This file is password-protected or in an old format (.doc/.xls/.ppt). Save it without a password as .docx/.xlsx/.pptx.</string>
 </resources>

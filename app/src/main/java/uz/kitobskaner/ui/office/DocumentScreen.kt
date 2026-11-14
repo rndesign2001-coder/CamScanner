@@ -183,6 +183,7 @@ fun DocumentScreen(
     var query by remember { mutableStateOf("") }
     val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
+    val errEnc = stringResource(R.string.err_encrypted)
 
     LaunchedEffect(uri) {
         if (kind == DocKind.PDF) return@LaunchedEffect
@@ -215,6 +216,8 @@ fun DocumentScreen(
                     htmlFile = f
                 }
             }
+        } catch (e: HtmlRenderer.EncryptedException) {
+            error = errEnc
         } catch (e: Throwable) {
             error = errOpen
         }

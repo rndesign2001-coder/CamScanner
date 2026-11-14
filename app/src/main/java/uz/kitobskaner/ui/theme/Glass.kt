@@ -67,7 +67,7 @@ fun Modifier.glass(
     .clip(shape)
     .background(
         Brush.verticalGradient(
-            if (dark) listOf(Color(0xFF262838), Color(0xFF1E2030))
+            if (dark) listOf(Color(0xFF1D2846), Color(0xFF16203A))
             else listOf(tint.copy(alpha = 0.98f), tint.copy(alpha = 0.94f))
         )
     )
@@ -95,8 +95,11 @@ fun GlassCard(
             .scale(if (pressed) 0.97f else 1f)
             .glass(shape, dark)
             .then(if (onClick != null) Modifier.clickable(source, null, onClick = onClick) else Modifier),
-        content = content,
-    )
+    ) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+        ) { content() }
+    }
 }
 
 /** Oynasimon, yaltiroq gradient tugma (bosilganda siqiladi). */

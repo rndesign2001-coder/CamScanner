@@ -32,9 +32,10 @@ val Amber = Color(0xFFF59E0B)
 class PaletteSpec(val primary: Color, val secondary: Color, val tertiary: Color, val gradient: List<Color>)
 
 fun spec(p: Palette): PaletteSpec = when (p) {
+    // QulayOfis brendi: logotipdagi yorqin ko'k + yashil
     Palette.INDIGO, Palette.DYNAMIC -> PaletteSpec(
-        Color(0xFF4F46E5), Color(0xFF0EA5E9), Color(0xFFF59E0B),
-        listOf(Color(0xFF4F46E5), Color(0xFF7C3AED), Color(0xFF9333EA))
+        Color(0xFF1E6BFF), Color(0xFF16C784), Color(0xFFFFB020),
+        listOf(Color(0xFF1E6BFF), Color(0xFF00B4FF), Color(0xFF16C784))
     )
     Palette.OCEAN -> PaletteSpec(
         Color(0xFF0284C7), Color(0xFF14B8A6), Color(0xFFF97316),
@@ -59,7 +60,7 @@ fun spec(p: Palette): PaletteSpec = when (p) {
 }
 
 private val White = Color.White
-private val Night = Color(0xFF07080E)
+private val Night = Color(0xFF0A0F1F)
 
 private fun lightScheme(s: PaletteSpec): ColorScheme = lightColorScheme(
     primary = s.primary,
@@ -104,10 +105,10 @@ private fun darkScheme(s: PaletteSpec): ColorScheme {
         tertiaryContainer = lerp(s.tertiary, Night, 0.6f),
         onTertiaryContainer = lerp(s.tertiary, White, 0.85f),
         background = Color.Transparent,
-        onBackground = Color(0xFFE7E7F3),
-        surface = Color(0xFF1E2030),
-        onSurface = Color(0xFFE7E7F3),
-        surfaceVariant = Color(0xFF2A2C3E),
+        onBackground = Color(0xFFF1F4FF),
+        surface = Color(0xFF17203A),
+        onSurface = Color(0xFFF1F4FF),
+        surfaceVariant = Color(0xFF222C4A),
         onSurfaceVariant = Color(0xFFB9BBD3),
         surfaceContainerLowest = Color(0xFF15161F),
         surfaceContainerLow = lerp(s.primary, Night, 0.9f),
@@ -165,11 +166,14 @@ fun KitobTheme(mode: ThemeMode, palette: Palette, content: @Composable () -> Uni
     val gradColors = if (palette == Palette.DYNAMIC && Build.VERSION.SDK_INT >= 31) {
         listOf(scheme.primary, lerp(scheme.primary, scheme.tertiary, 0.5f), scheme.tertiary)
     } else if (dark) s.gradient.map { lerp(it, Night, 0.18f) } else s.gradient
-    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark, if (dark) Color(0xFF0F1017) else lerp(scheme.primary, Color(0xFFF4F5F9), 0.95f))) {
+    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark, if (dark) Color(0xFF0B1226) else lerp(scheme.primary, Color(0xFFF4F5F9), 0.95f))) {
         MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes) {
-            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
-                GlassBackdrop()
-                content()
+            // matn rangi butun ilova bo'ylab mavzuga mos (tungi rejimda qora matn bo'lmasin)
+            CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides scheme.onBackground) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                    GlassBackdrop()
+                    content()
+                }
             }
         }
     }

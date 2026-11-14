@@ -130,7 +130,7 @@
     <string name="pal_dynamic">Material You</string>
     <string name="pal_emerald">Изумруд</string>
     <string name="pal_graphite">Графит</string>
-    <string name="pal_indigo">Индиго</string>
+    <string name="pal_indigo">QulayOfis</string>
     <string name="pal_ocean">Океан</string>
     <string name="pal_rose">Роза</string>
     <string name="pal_sunset">Закат</string>
@@ -272,4 +272,5 @@
     <string name="crash_text">Отправьте сведения об ошибке разработчику — это поможет быстро её исправить.</string>
     <string name="search_in_doc">Поиск в документе</string>
     <string name="legacy_format">Это файл старого формата (DOC, XLS, PPT, RTF или ODF). QulayOfis открывает современные DOCX, XLSX, PPTX, PDF, CSV и TXT. Пересохраните файл в Word/Excel/WPS как DOCX/XLSX/PPTX или попросите отправителя прислать новый формат.</string>
+    <string name="err_encrypted">Файл защищён паролем или в старом формате (.doc/.xls/.ppt). Сохраните его без пароля как .docx/.xlsx/.pptx.</string>
 </resources>

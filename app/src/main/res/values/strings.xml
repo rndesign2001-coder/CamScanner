@@ -131,7 +131,7 @@
     <string name="pal_dynamic">Material You</string>
     <string name="pal_emerald">Zumrad</string>
     <string name="pal_graphite">Grafit</string>
-    <string name="pal_indigo">Indigo</string>
+    <string name="pal_indigo">QulayOfis</string>
     <string name="pal_ocean">Okean</string>
     <string name="pal_rose">Atirgul</string>
     <string name="pal_sunset">Shafaq</string>
@@ -273,4 +273,5 @@
     <string name="crash_text">Xatolik tafsilotlarini ishlab chiquvchiga yuborsangiz, uni tezda tuzatish mumkin bo\'ladi.</string>
     <string name="search_in_doc">Hujjatdan qidirish</string>
     <string name="legacy_format">Bu eski formatdagi fayl (DOC, XLS, PPT, RTF yoki ODF). QulayOfis zamonaviy DOCX, XLSX, PPTX, PDF, CSV va TXT fayllarini ochadi. Faylni Word/Excel/WPS\'da \"Saqlash: DOCX/XLSX/PPTX\" qilib qayta saqlang yoki yuboruvchidan yangi formatda so\'rang.</string>
+    <string name="err_encrypted">Bu fayl parol bilan himoyalangan yoki eski (.doc/.xls/.ppt) formatda. Uni parolsiz .docx/.xlsx/.pptx qilib saqlang.</string>
 </resources>
