@@ -13,8 +13,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +47,11 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Print
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import uz.kitobskaner.office.HtmlRenderer
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -109,7 +118,7 @@ import uz.kitobskaner.ui.page.Markup
 import uz.kitobskaner.ui.theme.GlassCard
 import java.io.File
 
-enum class DocKind { PDF, DOCX, XLSX, PPTX, TXT, UNKNOWN }
+enum class DocKind { PDF, DOCX, XLSX, PPTX, CSV, TXT, LEGACY, UNKNOWN }
 
 fun kindOf(name: String, mime: String?): DocKind {
     val ext = name.substringAfterLast('.', "").lowercase()
@@ -118,7 +127,10 @@ fun kindOf(name: String, mime: String?): DocKind {
         ext == "docx" || mime?.contains("wordprocessingml") == true -> DocKind.DOCX
         ext == "xlsx" || mime?.contains("spreadsheetml") == true -> DocKind.XLSX
         ext == "pptx" || mime?.contains("presentationml") == true -> DocKind.PPTX
-        ext in setOf("txt", "md", "csv", "log", "json", "xml") || mime?.startsWith("text/") == true -> DocKind.TXT
+        ext == "csv" || mime == "text/csv" || mime == "text/comma-separated-values" -> DocKind.CSV
+        ext in setOf("doc", "xls", "ppt", "rtf", "odt", "ods", "odp", "pps") || mime == "application/msword" ||
+            mime == "application/vnd.ms-excel" || mime == "application/vnd.ms-powerpoint" -> DocKind.LEGACY
+        ext in setOf("txt", "md", "log", "json", "xml", "html", "htm", "ini", "kt", "java", "py") || mime?.startsWith("text/") == true -> DocKind.TXT
         else -> DocKind.UNKNOWN
     }
 }
@@ -166,19 +178,41 @@ fun DocumentScreen(
     var slides by remember { mutableStateOf<List<Slide>>(emptyList()) }
     var text by remember { mutableStateOf("") }
     var dirty by remember { mutableStateOf(false) }
+    var htmlFile by remember { mutableStateOf<File?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
 
     LaunchedEffect(uri) {
         if (kind == DocKind.PDF) return@LaunchedEffect
+        if (kind == DocKind.LEGACY) { loading = false; return@LaunchedEffect }
         try {
             withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    when (kind) {
-                        DocKind.DOCX -> blocks = DocxReader.read(input)
-                        DocKind.XLSX -> { val s = XlsxReader.read(input); withContext(Dispatchers.Main) { sheets.clear(); sheets.addAll(s) } }
-                        DocKind.PPTX -> slides = PptxReader.read(input)
-                        else -> text = input.readBytes().toString(Charsets.UTF_8)
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("open")
+                val renderer = HtmlRenderer(::encodeImage)
+                val html: String? = when (kind) {
+                    DocKind.DOCX -> {
+                        blocks = try { DocxReader.read(bytes.inputStream()) } catch (e: Throwable) { emptyList() }
+                        renderer.docx(bytes.inputStream(), name)
                     }
+                    DocKind.XLSX -> {
+                        val s = try { XlsxReader.read(bytes.inputStream()) } catch (e: Throwable) { emptyList() }
+                        withContext(Dispatchers.Main) { sheets.clear(); sheets.addAll(s) }
+                        renderer.xlsx(bytes.inputStream(), name)
+                    }
+                    DocKind.PPTX -> {
+                        slides = try { PptxReader.read(bytes.inputStream()) } catch (e: Throwable) { emptyList() }
+                        renderer.pptx(bytes.inputStream(), name)
+                    }
+                    DocKind.CSV -> { text = bytes.toString(Charsets.UTF_8); renderer.csv(text, name) }
+                    else -> { text = bytes.toString(Charsets.UTF_8); null }
+                }
+                if (html != null) {
+                    val f = File(context.cacheDir, "view/doc_${System.currentTimeMillis()}.html")
+                    f.parentFile?.apply { mkdirs(); listFiles()?.forEach { old -> if (old != f) old.delete() } }
+                    f.writeText(html)
+                    htmlFile = f
                 }
             }
         } catch (e: Throwable) {
@@ -249,8 +283,18 @@ fun DocumentScreen(
                             if (editing) IconButton(onClick = { save() }) { Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) }
                             else IconButton(onClick = { markup = Markup.toMarkup(blocks); editing = true }) { Icon(Icons.Rounded.Edit, null) }
                         }
-                        DocKind.XLSX, DocKind.TXT -> IconButton(onClick = { save() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
-                        DocKind.PPTX -> IconButton(onClick = { save() }) { Icon(Icons.Rounded.PictureAsPdf, null) }
+                        DocKind.XLSX -> {
+                            if (editing) IconButton(onClick = { save() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
+                            else IconButton(onClick = { editing = true }, enabled = sheets.isNotEmpty()) { Icon(Icons.Rounded.Edit, null) }
+                        }
+                        DocKind.TXT -> IconButton(onClick = { save() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
+                        else -> {}
+                    }
+                    if (htmlFile != null && !editing) {
+                        IconButton(onClick = { searching = !searching; if (!searching) web.clearFind() }) { Icon(Icons.Rounded.Search, null) }
+                        IconButton(onClick = { web.print(context, base) }) { Icon(Icons.Rounded.Print, null) }
+                    }
+                    when (kind) {
                         else -> {}
                     }
                     if (kind != DocKind.PDF && kind != DocKind.UNKNOWN) IconButton(onClick = {
@@ -278,6 +322,11 @@ fun DocumentScreen(
                 error != null -> Text(error!!, Modifier.align(Alignment.Center).padding(24.dp))
                 loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 kind == DocKind.PDF -> PdfViewer(uri)
+                kind == DocKind.LEGACY -> LegacyNotice(name)
+                !editing && htmlFile != null -> Column(Modifier.fillMaxSize()) {
+                    if (searching) SearchBar(query, onQuery = { query = it; web.find(it) }, onPrev = { web.next(false) }, onNext = { web.next(true) })
+                    OfficeWebView(htmlFile!!, web, Modifier.fillMaxSize())
+                }
                 kind == DocKind.DOCX -> if (editing) OutlinedTextField(
                     value = markup,
                     onValueChange = { markup = it },
@@ -310,7 +359,6 @@ fun DocumentScreen(
 
 // ---------------------------------------------------------------- PDF
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun PdfViewer(uri: Uri) {
     val context = LocalContext.current
@@ -329,16 +377,36 @@ private fun PdfViewer(uri: Uri) {
     }
     val count = remember(renderer) { renderer.second.pageCount }
     var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    val state = rememberTransformableState { z, pan, _ ->
-        scale = (scale * z).coerceIn(1f, 5f)
-        offset = if (scale <= 1f) Offset.Zero else offset + pan
-    }
+    var offsetX by remember { mutableFloatStateOf(0f) }
     LazyColumn(
         Modifier
             .fillMaxSize()
-            .transformable(state, canPan = { scale > 1f })
-            .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
+            // ikki barmoq — kattalashtirish/surish; bir barmoq — odatdagidek varaqlash
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.count { it.pressed } >= 2) {
+                            val z = event.calculateZoom()
+                            val pan = event.calculatePan()
+                            scale = (scale * z).coerceIn(1f, 5f)
+                            val maxX = size.width * (scale - 1f) / 2f
+                            offsetX = if (scale <= 1f) 0f else (offsetX + pan.x).coerceIn(-maxX, maxX)
+                            event.changes.forEach { it.consume() }
+                        } else if (scale > 1f) {
+                            // kattalashtirilganda bir barmoq bilan gorizontal surish
+                            val ch = event.changes.firstOrNull()
+                            if (ch != null && ch.pressed) {
+                                val dx = ch.position.x - ch.previousPosition.x
+                                val maxX = size.width * (scale - 1f) / 2f
+                                offsetX = (offsetX + dx).coerceIn(-maxX, maxX)
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
+            .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offsetX },
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -553,3 +621,43 @@ private fun slidesToPdf(slides: List<Slide>, out: File) {
     }
 }
 
+
+@Composable
+private fun SearchBar(query: String, onQuery: (String) -> Unit, onPrev: () -> Unit, onNext: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = query, onValueChange = onQuery, singleLine = true,
+            placeholder = { Text(stringResource(R.string.search_in_doc)) },
+            leadingIcon = { Icon(Icons.Rounded.Search, null) },
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onPrev) { Icon(Icons.Rounded.KeyboardArrowUp, null) }
+        IconButton(onClick = onNext) { Icon(Icons.Rounded.KeyboardArrowDown, null) }
+    }
+}
+
+@Composable
+private fun LegacyNotice(name: String) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        uz.kitobskaner.ui.components.Icon3D(R.drawable.ic3d_warning, 88.dp)
+        Spacer(Modifier.height(16.dp))
+        Text(name, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(R.string.legacy_format), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center
+        )
+    }
+}

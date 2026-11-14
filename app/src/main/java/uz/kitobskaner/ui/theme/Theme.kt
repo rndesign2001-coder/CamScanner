@@ -75,11 +75,11 @@ private fun lightScheme(s: PaletteSpec): ColorScheme = lightColorScheme(
     onTertiaryContainer = lerp(s.tertiary, Color.Black, 0.62f),
     background = Color.Transparent,
     onBackground = Color(0xFF14142B),
-    surface = White.copy(alpha = 0.62f),
+    surface = White,
     onSurface = Color(0xFF14142B),
-    surfaceVariant = lerp(s.primary, White, 0.9f).copy(alpha = 0.8f),
+    surfaceVariant = lerp(s.primary, White, 0.92f),
     onSurfaceVariant = Color(0xFF54566F),
-    surfaceContainerLowest = lerp(s.primary, White, 0.96f).copy(alpha = 0.93f),
+    surfaceContainerLowest = lerp(s.primary, White, 0.97f),
     surfaceContainerLow = lerp(s.primary, White, 0.975f),
     surfaceContainer = lerp(s.primary, White, 0.95f),
     surfaceContainerHigh = lerp(s.primary, White, 0.92f),
@@ -105,11 +105,11 @@ private fun darkScheme(s: PaletteSpec): ColorScheme {
         onTertiaryContainer = lerp(s.tertiary, White, 0.85f),
         background = Color.Transparent,
         onBackground = Color(0xFFE7E7F3),
-        surface = White.copy(alpha = 0.08f),
+        surface = Color(0xFF1E2030),
         onSurface = Color(0xFFE7E7F3),
-        surfaceVariant = White.copy(alpha = 0.12f),
+        surfaceVariant = Color(0xFF2A2C3E),
         onSurfaceVariant = Color(0xFFB9BBD3),
-        surfaceContainerLowest = lerp(s.primary, Night, 0.9f).copy(alpha = 0.93f),
+        surfaceContainerLowest = Color(0xFF15161F),
         surfaceContainerLow = lerp(s.primary, Night, 0.9f),
         surfaceContainer = lerp(s.primary, Night, 0.86f),
         surfaceContainerHigh = lerp(s.primary, Night, 0.82f),
@@ -165,7 +165,7 @@ fun KitobTheme(mode: ThemeMode, palette: Palette, content: @Composable () -> Uni
     val gradColors = if (palette == Palette.DYNAMIC && Build.VERSION.SDK_INT >= 31) {
         listOf(scheme.primary, lerp(scheme.primary, scheme.tertiary, 0.5f), scheme.tertiary)
     } else if (dark) s.gradient.map { lerp(it, Night, 0.18f) } else s.gradient
-    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark, if (dark) lerp(scheme.primary, Night, 0.9f) else lerp(scheme.primary, White, 0.9f))) {
+    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark, if (dark) Color(0xFF0F1017) else lerp(scheme.primary, Color(0xFFF4F5F9), 0.95f))) {
         MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes) {
             androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                 GlassBackdrop()

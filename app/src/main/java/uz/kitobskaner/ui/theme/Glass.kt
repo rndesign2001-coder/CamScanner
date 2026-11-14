@@ -1,11 +1,5 @@
 package uz.kitobskaner.ui.theme
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,8 +30,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * Butun ilova orqasidagi jonli fon: sekin suzib yuruvchi rangli "nur dog'lari".
@@ -45,64 +37,45 @@ import kotlin.math.sin
  */
 @Composable
 fun GlassBackdrop(modifier: Modifier = Modifier) {
+    // Statik fon: bir marta chiziladi (avvalgi doimiy animatsiya har kadrda butun ekranni
+    // qayta chizib, ilovani sekinlashtirardi).
     val brand = LocalBrand.current
-    val t = rememberInfiniteTransition(label = "backdrop")
-    val phase by t.animateFloat(
-        0f, (2 * Math.PI).toFloat(),
-        infiniteRepeatable(tween(28000, easing = LinearEasing), RepeatMode.Restart), label = "phase"
-    )
     val c = brand.colors
-    val blobs = remember(c) { listOf(c.first(), c.getOrElse(1) { c.first() }, c.last()) }
-    val alpha = if (brand.isDark) 0.55f else 0.38f
+    val alpha = if (brand.isDark) 0.30f else 0.16f
     Box(
         modifier
             .fillMaxSize()
             .background(brand.base)
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer()
-                .drawBehind {
-                    val w = size.width
-                    val h = size.height
-                    val r = maxOf(w, h) * 0.55f
-                    val pts = listOf(
-                        Offset(w * (0.15f + 0.12f * cos(phase)), h * (0.12f + 0.06f * sin(phase))),
-                        Offset(w * (0.9f + 0.1f * sin(phase * 1.3f)), h * (0.42f + 0.08f * cos(phase))),
-                        Offset(w * (0.3f + 0.15f * sin(phase * 0.7f)), h * (0.92f + 0.05f * cos(phase * 1.1f))),
-                    )
-                    pts.forEachIndexed { i, p ->
-                        drawCircle(
-                            Brush.radialGradient(listOf(blobs[i].copy(alpha = alpha), Color.Transparent), p, r),
-                            radius = r, center = p
-                        )
-                    }
-                }
-        )
-    }
+            .drawBehind {
+                val w = size.width
+                val h = size.height
+                val r = maxOf(w, h) * 0.6f
+                drawCircle(Brush.radialGradient(listOf(c.first().copy(alpha = alpha), Color.Transparent), Offset(w * 0.05f, 0f), r), r, Offset(w * 0.05f, 0f))
+                drawCircle(Brush.radialGradient(listOf(c.last().copy(alpha = alpha * 0.8f), Color.Transparent), Offset(w, h * 0.55f), r * 0.8f), r * 0.8f, Offset(w, h * 0.55f))
+            }
+    )
 }
 
 /** Shisha sirt: yarim shaffof to'ldirish, yuqoridan yorug' chegara va yumshoq soya. */
 fun Modifier.glass(
     shape: Shape = RoundedCornerShape(24.dp),
     dark: Boolean,
-    elevation: Dp = 10.dp,
+    elevation: Dp = 3.dp,
     tint: Color = Color.White,
 ): Modifier = this
     .shadow(elevation, shape, ambientColor = Color(0x33000000), spotColor = Color(0x22000000))
     .clip(shape)
     .background(
         Brush.verticalGradient(
-            if (dark) listOf(tint.copy(alpha = 0.16f), tint.copy(alpha = 0.06f))
-            else listOf(tint.copy(alpha = 0.86f), tint.copy(alpha = 0.58f))
+            if (dark) listOf(Color(0xFF262838), Color(0xFF1E2030))
+            else listOf(tint.copy(alpha = 0.98f), tint.copy(alpha = 0.94f))
         )
     )
     .border(
         1.dp,
         Brush.verticalGradient(
-            if (dark) listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.04f))
-            else listOf(Color.White, Color.White.copy(alpha = 0.25f))
+            if (dark) listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.04f))
+            else listOf(Color(0x14000000), Color(0x0A000000))
         ),
         shape
     )

@@ -270,4 +270,6 @@
     <string name="search_files">Поиск файлов</string>
     <string name="crash_title">В прошлый раз произошла ошибка</string>
     <string name="crash_text">Отправьте сведения об ошибке разработчику — это поможет быстро её исправить.</string>
+    <string name="search_in_doc">Поиск в документе</string>
+    <string name="legacy_format">Это файл старого формата (DOC, XLS, PPT, RTF или ODF). QulayOfis открывает современные DOCX, XLSX, PPTX, PDF, CSV и TXT. Пересохраните файл в Word/Excel/WPS как DOCX/XLSX/PPTX или попросите отправителя прислать новый формат.</string>
 </resources>

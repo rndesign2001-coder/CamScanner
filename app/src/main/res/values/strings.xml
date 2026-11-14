@@ -271,4 +271,6 @@
     <string name="search_files">Fayllarni qidirish</string>
     <string name="crash_title">Oldingi safar xatolik yuz berdi</string>
     <string name="crash_text">Xatolik tafsilotlarini ishlab chiquvchiga yuborsangiz, uni tezda tuzatish mumkin bo\'ladi.</string>
+    <string name="search_in_doc">Hujjatdan qidirish</string>
+    <string name="legacy_format">Bu eski formatdagi fayl (DOC, XLS, PPT, RTF yoki ODF). QulayOfis zamonaviy DOCX, XLSX, PPTX, PDF, CSV va TXT fayllarini ochadi. Faylni Word/Excel/WPS\'da \"Saqlash: DOCX/XLSX/PPTX\" qilib qayta saqlang yoki yuboruvchidan yangi formatda so\'rang.</string>
 </resources>

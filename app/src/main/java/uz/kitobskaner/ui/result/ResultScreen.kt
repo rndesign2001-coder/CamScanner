@@ -264,7 +264,7 @@ fun ResultScreen(
             if (isPdf) ActionRow(Icons.Rounded.Approval, stringResource(R.string.sign_place_pdf), stringResource(R.string.sign_place_sub)) {
                 onSign(file.absolutePath)
             }
-            if (file.extension.lowercase() in setOf("pdf", "docx", "xlsx", "txt")) ActionRow(
+            if (file.extension.lowercase() in setOf("pdf", "docx", "xlsx", "pptx", "csv", "txt")) ActionRow(
                 Icons.Rounded.Visibility, stringResource(R.string.open_in_app), stringResource(R.string.open_in_app_sub)
             ) { onOpenInApp(file.absolutePath) }
             if (isPdf) ActionRow(Icons.Rounded.Compress, stringResource(R.string.tool_compress), stringResource(R.string.tool_compress_sub)) {
