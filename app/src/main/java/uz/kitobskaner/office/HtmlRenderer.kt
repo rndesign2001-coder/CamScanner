@@ -2,6 +2,7 @@ package uz.kitobskaner.office
 
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
+import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 import kotlin.math.roundToInt
@@ -33,22 +34,61 @@ class HtmlRenderer(
         return readZipStream(buf)
     }
 
+    /**
+     * Arxivni markaziy katalog orqali o'qiydi (ZipFile). Oqimli o'qish (ZipInputStream) ba'zi
+     * dasturlar yozgan fayllarda (STORED + data descriptor) birinchi yozuvlardan keyin jim
+     * to'xtab qolardi — shunda faqat 1-slayd ochilib, rasmlar yo'qolardi.
+     */
     private fun readZipStream(input: InputStream): Map<String, ByteArray> {
-        val out = HashMap<String, ByteArray>()
-        var total = 0L
-        ZipInputStream(input.buffered()).use { z ->
-            while (true) {
-                val e = z.nextEntry ?: break
-                if (!e.isDirectory) {
-                    val b = z.readBytes()
-                    total += b.size
-                    if (total > 400L * 1024 * 1024) throw IllegalStateException("too large")
-                    out[e.name.removePrefix("/")] = b
+        val tmp = File.createTempFile("qo_zip", ".bin")
+        try {
+            tmp.outputStream().use { input.copyTo(it) }
+            val out = HashMap<String, ByteArray>()
+            try {
+                var total = 0L
+                java.util.zip.ZipFile(tmp).use { z ->
+                    for (e in z.entries()) {
+                        if (e.isDirectory) continue
+                        val b = try { z.getInputStream(e).use { it.readBytes() } } catch (_: Exception) { continue }
+                        total += b.size
+                        if (total > 400L * 1024 * 1024) throw IllegalStateException("too large")
+                        out[e.name.removePrefix("/")] = b
+                    }
                 }
-                z.closeEntry()
+            } catch (e: IllegalStateException) {
+                throw e
+            } catch (_: Exception) {
             }
+            // zaxira: oqimli o'qish (markaziy katalog buzilgan fayllar uchun)
+            if (out.isEmpty() || !out.keys.any { it == "[Content_Types].xml" }) {
+                tmp.inputStream().use { readZipEntries(it, out) }
+            }
+            return out
+        } finally {
+            tmp.delete()
         }
-        return out
+    }
+
+    private fun readZipEntries(input: InputStream, out: HashMap<String, ByteArray>) {
+        var total = 0L
+        try {
+            ZipInputStream(input.buffered()).use { z ->
+                while (true) {
+                    val e = z.nextEntry ?: break
+                    if (!e.isDirectory) {
+                        val b = z.readBytes()
+                        total += b.size
+                        if (total > 400L * 1024 * 1024) throw IllegalStateException("too large")
+                        out.putIfAbsent(e.name.removePrefix("/"), b)
+                    }
+                    z.closeEntry()
+                }
+            }
+        } catch (e: IllegalStateException) {
+            throw e
+        } catch (e: Exception) {
+            if (out.isEmpty()) throw e
+        }
     }
 
     private fun parser(b: ByteArray): XmlPullParser = Xml.newPullParser().apply {
@@ -1061,6 +1101,7 @@ table.x td.b{border:1px solid #444}
         }
         if (order.isEmpty()) order += files.keys.filter { it.matches(Regex("ppt/slides/slide\\d+\\.xml")) }
             .sortedBy { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+        if (order.isEmpty()) throw IllegalStateException("no slides")
         val W = sw / 12700f
         val H = sh / 12700f
         val body = StringBuilder()
@@ -1575,8 +1616,16 @@ window.addEventListener('resize',fit);fit();"""
         var rid: String? = null
         val xf = Xfrm()
         var crop: FloatArray? = null
+        var ph: String? = null
+        var phType = ""
         p.children({ n ->
             when (n) {
+                "p:nvPicPr" -> p.children({ a1 ->
+                    if (a1 == "p:nvPr") p.children({ a2 ->
+                        if (a2 == "p:ph") { phType = p.a("type") ?: "pic"; ph = phType + ":" + (p.a("idx") ?: "") }
+                        p.skipTag()
+                    }) else p.skipTag()
+                })
                 "p:blipFill" -> p.children({ c ->
                     when (c) {
                         "a:blip" -> { rid = p.a("r:embed"); p.skipTag() }
@@ -1594,6 +1643,12 @@ window.addEventListener('resize',fit);fit();"""
             }
         })
         val src = image(ctx.files, rid?.let { ctx.rels[it] }) ?: return ""
+        // rasm joy egasida bo'lsa, o'lchami maket/master'dan olinadi
+        if (xf.w <= 0f || xf.h <= 0f) {
+            val info = ph?.let { ctx.ph[it] ?: ctx.ph[phType] } ?: return ""
+            xf.x = info.xf.x; xf.y = info.xf.y; xf.w = info.xf.w; xf.h = info.xf.h
+            if (xf.w <= 0f) return ""
+        }
         val c = crop
         val img = if (c != null && c[0] + c[2] < 1f && c[1] + c[3] < 1f) {
             // kesilgan rasm: kattaroq qilib, ko'rinadigan qismini siljitamiz
