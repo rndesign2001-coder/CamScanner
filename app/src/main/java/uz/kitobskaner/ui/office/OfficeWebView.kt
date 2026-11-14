@@ -22,6 +22,16 @@ import kotlin.math.max
 class WebController {
     var view: WebView? = null
 
+    /** Sahifa to'liq yuklanganda chaqiriladi (ko'rinish rejimi, tahrirlashni qayta yoqish). */
+    var onLoaded: (() -> Unit)? = null
+
+    /** JavaScript bajaradi; natija JSON qatori ko'rinishida (evaluateJavascript). */
+    fun eval(js: String, cb: ((String?) -> Unit)? = null) {
+        val v = view
+        if (v == null) { cb?.invoke(null); return }
+        v.evaluateJavascript(js) { cb?.invoke(it) }
+    }
+
     fun find(q: String) {
         view?.findAllAsync(q)
     }
@@ -59,9 +69,13 @@ fun OfficeWebView(htmlFile: File, controller: WebController, modifier: Modifier 
                 settings.setSupportZoom(true)
                 settings.cacheMode = WebSettings.LOAD_NO_CACHE
                 settings.blockNetworkLoads = true
+                settings.textZoom = 100
+                isFocusable = true
+                isFocusableInTouchMode = true
                 webViewClient = object : WebViewClient() {
                     // hujjat ichidagi havolalar tashqi brauzerda ochilmasin
                     override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?) = true
+                    override fun onPageFinished(view: WebView?, url: String?) { controller.onLoaded?.invoke() }
                 }
                 setBackgroundColor(android.graphics.Color.rgb(233, 235, 240))
                 controller.view = this

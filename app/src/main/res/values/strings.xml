@@ -94,7 +94,7 @@
     <string name="mode_single_hint">Har bir suratda bitta sahifa</string>
     <string name="mode_spread">2 bet (yoyilma)</string>
     <string name="mode_spread_hint">Kitob ochiq holda olinadi — dastur o\'rtasidan ikkita alohida sahifaga ajratadi</string>
-    <string name="more">Boshqa</string>
+    <string name="more">Yana</string>
     <string name="move_left">Oldinga surish</string>
     <string name="move_right">Orqaga surish</string>
     <string name="my_books">Kitoblarim</string>
@@ -274,4 +274,26 @@
     <string name="search_in_doc">Hujjatdan qidirish</string>
     <string name="legacy_format">Bu eski formatdagi fayl (DOC, XLS, PPT, RTF yoki ODF). QulayOfis zamonaviy DOCX, XLSX, PPTX, PDF, CSV va TXT fayllarini ochadi. Faylni Word/Excel/WPS\'da \"Saqlash: DOCX/XLSX/PPTX\" qilib qayta saqlang yoki yuboruvchidan yangi formatda so\'rang.</string>
     <string name="err_encrypted">Bu fayl parol bilan himoyalangan yoki eski (.doc/.xls/.ppt) formatda. Uni parolsiz .docx/.xlsx/.pptx qilib saqlang.</string>
+    <string name="view_desktop">Kompyuter ko‘rinishi (sahifalar)</string>
+    <string name="view_mobile">Mobil ko‘rinish</string>
+    <string name="save_where">O‘zgarishlarni qayerga saqlaymiz?</string>
+    <string name="save_original">Asl faylni yangilash</string>
+    <string name="save_copy">Yangi nusxa sifatida saqlash</string>
+    <string name="unsaved_title">Saqlanmagan o‘zgarishlar</string>
+    <string name="unsaved_msg">Qilingan o‘zgarishlar saqlansinmi?</string>
+    <string name="dont_save">Saqlamaslik</string>
+    <string name="move_mode">Ko‘chirish: shaklni bosib suring, burchakdagi doira — o‘lcham</string>
+    <string name="add_textbox">Matn qutisi qo‘shish</string>
+    <string name="delete_shape">Tanlangan shaklni o‘chirish</string>
+    <string name="dup_slide">Slaydni nusxalash</string>
+    <string name="del_slide">Slaydni o‘chirish</string>
+    <string name="new_text">Yangi matn</string>
+    <string name="saved_original">Asl fayl yangilandi</string>
+    <string name="saved_copy_fallback">Asl faylga yozib bo‘lmadi — yangi nusxa saqlandi</string>
+    <string name="xlsx_hint">Katakni bosing va yozing. Formula o‘rniga qiymat yozilsa, Excel uni qayta hisoblaydi.</string>
+    <string name="text_color">Matn rangi</string>
+    <string name="highlight_color">Fon rangi</string>
+    <string name="last_slide">Yagona slaydni o‘chirib bo‘lmaydi</string>
+    <string name="editing_on">Tahrirlash rejimi: matnni bosib yozing</string>
+    <string name="print_pdf">Chop etish / PDF</string>
 </resources>

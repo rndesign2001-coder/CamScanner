@@ -2,23 +2,18 @@ package uz.kitobskaner.ui.office
 
 import android.graphics.Bitmap
 import android.graphics.Color as AColor
-import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
-import android.text.Layout
-import android.text.StaticLayout
-import android.text.TextPaint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,91 +27,107 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.FormatAlignLeft
+import androidx.compose.material.icons.automirrored.rounded.FormatAlignRight
+import androidx.compose.material.icons.automirrored.rounded.Redo
+import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.AddToPhotos
 import androidx.compose.material.icons.rounded.Approval
-import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Compress
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FormatAlignCenter
+import androidx.compose.material.icons.rounded.FormatAlignJustify
+import androidx.compose.material.icons.rounded.FormatBold
+import androidx.compose.material.icons.rounded.FormatColorFill
+import androidx.compose.material.icons.rounded.FormatColorText
+import androidx.compose.material.icons.rounded.FormatItalic
+import androidx.compose.material.icons.rounded.FormatStrikethrough
+import androidx.compose.material.icons.rounded.FormatUnderlined
 import androidx.compose.material.icons.rounded.IosShare
-import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Print
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import uz.kitobskaner.office.HtmlRenderer
+import androidx.compose.material.icons.rounded.TextDecrease
+import androidx.compose.material.icons.rounded.TextFields
+import androidx.compose.material.icons.rounded.TextIncrease
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import uz.kitobskaner.App
 import uz.kitobskaner.R
-import uz.kitobskaner.data.Align
-import uz.kitobskaner.data.BlockType
-import uz.kitobskaner.data.TextBlock
-import uz.kitobskaner.office.DocxReader
-import uz.kitobskaner.office.PptxReader
-import uz.kitobskaner.office.Sheet
-import uz.kitobskaner.office.Slide
-import uz.kitobskaner.office.XlsxReader
-import uz.kitobskaner.pdf.DocxWriter
-import uz.kitobskaner.pdf.XlsxWriter
+import uz.kitobskaner.office.HtmlRenderer
+import uz.kitobskaner.office.OfficeEditor
 import uz.kitobskaner.ui.components.ProgressDialog
 import uz.kitobskaner.ui.components.toast
-import uz.kitobskaner.ui.page.Markup
-import uz.kitobskaner.ui.theme.GlassCard
 import java.io.File
+import kotlin.coroutines.resume
 
 enum class DocKind { PDF, DOCX, XLSX, PPTX, CSV, TXT, LEGACY, UNKNOWN }
 
@@ -146,9 +157,24 @@ private fun queryName(context: android.content.Context, uri: Uri): String {
     return uri.lastPathSegment ?: "doc"
 }
 
+/** evaluateJavascript natijasini (JSON qatori) oddiy matnga aylantiradi. */
+private fun jsString(raw: String?): String? = try {
+    (Json.parseToJsonElement(raw ?: "null") as? JsonPrimitive)?.contentOrNull
+} catch (_: Exception) {
+    null
+}
+
+private suspend fun WebController.call(js: String): String? = suspendCancellableCoroutine { c ->
+    eval(js) { r -> if (c.isActive) c.resume(r) }
+}
+
 /**
- * Hujjat ko'ruvchi va muharriri: PDF, Word (DOCX), Excel (XLSX), PowerPoint (PPTX), matn.
- * Tahrirlangan nusxa "Fayllar" bo'limiga yangi fayl sifatida saqlanadi (asl fayl o'zgarmaydi).
+ * Hujjat ko'ruvchi va muharriri (WPS/Office uslubida):
+ * - Word: sahifalarga bo'lingan "kompyuter" ko'rinishi yoki ekranga moslangan "mobil" ko'rinish,
+ *   matnni joyida tahrirlash va formatlash;
+ * - PowerPoint: slaydlar, namoyish, matn tahriri, shakllarni surish/o'lcham, matn qutisi, slayd nusxasi/o'chirish;
+ * - Excel: kataklarni tahrirlash, mobil ko'rinishda kartochkalar.
+ * Saqlashda o'zgarishlar asl faylning o'ziga yoziladi (yoki yangi nusxa) — format to'liq saqlanadi.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,58 +190,69 @@ fun DocumentScreen(
     val scope = rememberCoroutineScope()
     val name = remember(uri) { queryName(context, uri) }
     val kind = remember(uri) { kindOf(name, context.contentResolver.getType(uri)) }
+    val office = kind == DocKind.DOCX || kind == DocKind.XLSX || kind == DocKind.PPTX
+    val kindStr = when (kind) { DocKind.DOCX -> "docx"; DocKind.XLSX -> "xlsx"; DocKind.PPTX -> "pptx"; else -> "" }
     val base = name.substringBeforeLast('.')
+    val ext = name.substringAfterLast('.', "txt").lowercase()
     var loading by remember { mutableStateOf(kind != DocKind.PDF) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
-
-    // hujjat holatlari
-    var blocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
-    var markup by remember { mutableStateOf("") }
-    val sheets = remember { mutableStateListOf<Sheet>() }
-    var sheetIndex by remember { mutableIntStateOf(0) }
-    var slides by remember { mutableStateOf<List<Slide>>(emptyList()) }
+    var moveMode by remember { mutableStateOf(false) }
+    var mobileView by rememberSaveable { mutableStateOf(false) }
+    // joriy fayl baytlari (slayd amallari va saqlashlar shu yerda to'planadi)
+    var work by remember { mutableStateOf<ByteArray?>(null) }
+    var unsaved by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var dirty by remember { mutableStateOf(false) }
     var htmlFile by remember { mutableStateOf<File?>(null) }
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    var menu by remember { mutableStateOf(false) }
+    var askSave by remember { mutableStateOf<ByteArray?>(null) }
+    var leave by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var afterSave by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var pendingSlide by remember { mutableIntStateOf(-1) }
     val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
     val errEnc = stringResource(R.string.err_encrypted)
+    val savedMsg = stringResource(R.string.saved_ok)
+    val savedOriginal = stringResource(R.string.saved_original)
+    val savedFallback = stringResource(R.string.saved_copy_fallback)
+    val lastSlideMsg = stringResource(R.string.last_slide)
+    val newText = stringResource(R.string.new_text)
+
+    suspend fun render(bytes: ByteArray) {
+        val html = withContext(Dispatchers.IO) {
+            val r = HtmlRenderer(::encodeImage)
+            when (kind) {
+                DocKind.DOCX -> r.docx(bytes.inputStream(), name)
+                DocKind.XLSX -> r.xlsx(bytes.inputStream(), name)
+                DocKind.PPTX -> r.pptx(bytes.inputStream(), name)
+                DocKind.CSV -> r.csv(bytes.toString(Charsets.UTF_8), name)
+                else -> null
+            }
+        } ?: return
+        htmlFile = withContext(Dispatchers.IO) {
+            File(context.cacheDir, "view/doc_${System.currentTimeMillis()}.html").also { f ->
+                f.parentFile?.apply { mkdirs(); listFiles()?.forEach { old -> if (old != f) old.delete() } }
+                f.writeText(html)
+            }
+        }
+    }
+
+    suspend fun readOriginal(): ByteArray = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("open")
+    }
 
     LaunchedEffect(uri) {
         if (kind == DocKind.PDF) return@LaunchedEffect
         if (kind == DocKind.LEGACY) { loading = false; return@LaunchedEffect }
         try {
-            withContext(Dispatchers.IO) {
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("open")
-                val renderer = HtmlRenderer(::encodeImage)
-                val html: String? = when (kind) {
-                    DocKind.DOCX -> {
-                        blocks = try { DocxReader.read(bytes.inputStream()) } catch (e: Throwable) { emptyList() }
-                        renderer.docx(bytes.inputStream(), name)
-                    }
-                    DocKind.XLSX -> {
-                        val s = try { XlsxReader.read(bytes.inputStream()) } catch (e: Throwable) { emptyList() }
-                        withContext(Dispatchers.Main) { sheets.clear(); sheets.addAll(s) }
-                        renderer.xlsx(bytes.inputStream(), name)
-                    }
-                    DocKind.PPTX -> {
-                        slides = try { PptxReader.read(bytes.inputStream()) } catch (e: Throwable) { emptyList() }
-                        renderer.pptx(bytes.inputStream(), name)
-                    }
-                    DocKind.CSV -> { text = bytes.toString(Charsets.UTF_8); renderer.csv(text, name) }
-                    else -> { text = bytes.toString(Charsets.UTF_8); null }
-                }
-                if (html != null) {
-                    val f = File(context.cacheDir, "view/doc_${System.currentTimeMillis()}.html")
-                    f.parentFile?.apply { mkdirs(); listFiles()?.forEach { old -> if (old != f) old.delete() } }
-                    f.writeText(html)
-                    htmlFile = f
-                }
-            }
+            val bytes = readOriginal()
+            if (office) work = bytes
+            if (kind == DocKind.TXT || kind == DocKind.CSV) text = bytes.toString(Charsets.UTF_8)
+            render(bytes)
         } catch (e: HtmlRenderer.EncryptedException) {
             error = errEnc
         } catch (e: Throwable) {
@@ -224,54 +261,160 @@ fun DocumentScreen(
         loading = false
     }
 
-    val savedMsg = stringResource(R.string.saved_ok)
-    fun save() {
-        busy = true
+    // sahifa qayta yuklanganda holatni tiklash
+    web.onLoaded = {
+        if (mobileView) web.eval("QO.view('mobile')")
+        if (editing) web.eval("QO.edit(true)")
+        if (moveMode) web.eval("QO.layout(true)")
+        if (pendingSlide >= 0) {
+            web.eval("setTimeout(function(){if(window.go)go($pendingSlide)},150)")
+            pendingSlide = -1
+        }
+    }
+
+    /** Ekrandagi o'zgarishlar qo'llangan fayl baytlari. */
+    suspend fun pending(): ByteArray? {
+        val w = work ?: return null
+        val json = jsString(web.call("QO.collect()")) ?: return w
+        if (!OfficeEditor.hasChanges(json)) return w
+        return withContext(Dispatchers.Default) { OfficeEditor.apply(w, kindStr, json) }
+    }
+
+    suspend fun hasPending(): Boolean = unsaved || web.call("QO.changed()") == "true"
+
+    fun startSave() {
         scope.launch {
+            busy = true
             try {
-                val f = withContext(Dispatchers.IO) {
-                    when (kind) {
-                        DocKind.DOCX -> {
-                            val b = if (editing) Markup.fromMarkup(markup, blocks) else blocks
-                            blocks = b
-                            app.exporter.uniqueFile(app.exporter.safeName(base), "docx").also { out ->
-                                out.outputStream().buffered().use { DocxWriter.write(base, b, File(context.cacheDir, "none"), it, withTitle = false) }
-                            }
-                        }
-                        DocKind.XLSX -> app.exporter.uniqueFile(app.exporter.safeName(base), "xlsx").also { out ->
-                            out.outputStream().buffered().use { XlsxWriter.writeNamed(sheets.map { it.name to it.rows }, it) }
-                        }
-                        DocKind.PPTX -> app.exporter.uniqueFile(app.exporter.safeName(base), "pdf").also { out -> slidesToPdf(slides, out) }
-                        else -> app.exporter.uniqueFile(app.exporter.safeName(base), name.substringAfterLast('.', "txt")).also { it.writeText(text) }
-                    }
-                }
-                app.exporter.refreshFiles()
-                editing = false
-                dirty = false
-                toast(context, savedMsg)
-                onOpenFile(f)
+                askSave = pending()
             } catch (e: Throwable) {
-                toast(context, (e.message ?: e.javaClass.simpleName))
+                toast(context, e.message ?: e.javaClass.simpleName)
             } finally {
                 busy = false
             }
         }
     }
 
-    BackHandler(enabled = editing) { editing = false }
+    fun doSave(bytes: ByteArray, original: Boolean) {
+        val after = afterSave
+        afterSave = null
+        scope.launch {
+            busy = true
+            try {
+                val wrote = original && withContext(Dispatchers.IO) {
+                    try {
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } != null
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                val msg = if (wrote) savedOriginal else {
+                    val f = withContext(Dispatchers.IO) { app.exporter.uniqueFile(app.exporter.safeName(base), ext).also { it.writeBytes(bytes) } }
+                    app.exporter.refreshFiles()
+                    if (original) savedFallback else "$savedMsg: ${f.name}"
+                }
+                work = bytes
+                unsaved = false
+                toast(context, msg)
+                if (after != null) after() else {
+                    pendingSlide = if (kind == DocKind.PPTX) (web.call("QO.cur()")?.toIntOrNull() ?: -1) else -1
+                    render(bytes) // identifikatorlar yangilanadi
+                }
+            } catch (e: Throwable) {
+                toast(context, e.message ?: e.javaClass.simpleName)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun slideOp(dup: Boolean) {
+        scope.launch {
+            busy = true
+            try {
+                val before = work ?: return@launch
+                val b = pending() ?: return@launch
+                val cur = web.call("QO.cur()")?.toIntOrNull() ?: 0
+                val nb = withContext(Dispatchers.Default) { if (dup) OfficeEditor.duplicateSlide(b, cur) else OfficeEditor.deleteSlide(b, cur) }
+                if (!dup && nb === b) toast(context, lastSlideMsg)
+                if (nb !== before) unsaved = true
+                work = nb
+                pendingSlide = if (dup) cur + 1 else maxOf(0, cur - 1)
+                render(nb)
+            } catch (e: Throwable) {
+                toast(context, e.message ?: e.javaClass.simpleName)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun discardAnd(action: () -> Unit) {
+        scope.launch {
+            busy = true
+            try {
+                val b = readOriginal()
+                work = b
+                unsaved = false
+                action()
+                render(b)
+            } catch (e: Throwable) {
+                action()
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun exitEdit() {
+        scope.launch {
+            val stop = { editing = false; moveMode = false; web.eval("QO.edit(false)"); Unit }
+            if (hasPending()) leave = stop else stop()
+        }
+    }
+
+    fun goBack() {
+        if (!office || (!editing && !unsaved)) { onBack(); return }
+        scope.launch { if (hasPending()) leave = onBack else onBack() }
+    }
+
+    BackHandler(enabled = office && (editing || unsaved)) { if (editing && !unsaved) exitEdit() else goBack() }
+    BackHandler(enabled = kind == DocKind.TXT && dirty) { leave = onBack }
+
+    fun saveTxt() {
+        scope.launch {
+            busy = true
+            try {
+                val f = withContext(Dispatchers.IO) { app.exporter.uniqueFile(app.exporter.safeName(base), ext).also { it.writeText(text) } }
+                app.exporter.refreshFiles()
+                dirty = false
+                toast(context, savedMsg)
+                onOpenFile(f)
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null) } },
-                title = { Text(name, maxLines = 1, style = MaterialTheme.typography.titleMedium) },
+                navigationIcon = {
+                    if (editing) IconButton(onClick = { exitEdit() }) { Icon(Icons.Rounded.Close, null) }
+                    else IconButton(onClick = { goBack() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null) }
+                },
+                title = {
+                    Text(
+                        if (editing) stringResource(R.string.edit) else name, maxLines = 1,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                },
                 actions = {
-                    when (kind) {
-                        DocKind.PDF -> {
+                    when {
+                        kind == DocKind.PDF -> {
                             IconButton(onClick = { onSign(uri) }) { Icon(Icons.Rounded.Approval, stringResource(R.string.sign_title)) }
                             IconButton(onClick = {
-                                // siqish uchun fayl nusxasi kerak
                                 scope.launch {
                                     val f = withContext(Dispatchers.IO) {
                                         File(context.cacheDir, "open_$name").also { out ->
@@ -282,35 +425,62 @@ fun DocumentScreen(
                                 }
                             }) { Icon(Icons.Rounded.Compress, null) }
                         }
-                        DocKind.DOCX -> {
-                            if (editing) IconButton(onClick = { save() }) { Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.primary) }
-                            else IconButton(onClick = { markup = Markup.toMarkup(blocks); editing = true }) { Icon(Icons.Rounded.Edit, null) }
-                        }
-                        DocKind.XLSX -> {
-                            if (editing) IconButton(onClick = { save() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
-                            else IconButton(onClick = { editing = true }, enabled = sheets.isNotEmpty()) { Icon(Icons.Rounded.Edit, null) }
-                        }
-                        DocKind.TXT -> IconButton(onClick = { save() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
-                        else -> {}
-                    }
-                    if (htmlFile != null && !editing) {
-                        IconButton(onClick = { searching = !searching; if (!searching) web.clearFind() }) { Icon(Icons.Rounded.Search, null) }
-                        IconButton(onClick = { web.print(context, base) }) { Icon(Icons.Rounded.Print, null) }
-                    }
-                    when (kind) {
-                        else -> {}
-                    }
-                    if (kind != DocKind.PDF && kind != DocKind.UNKNOWN) IconButton(onClick = {
-                        scope.launch {
-                            val f = withContext(Dispatchers.IO) {
-                                File(context.cacheDir, "share/$name").also { out ->
-                                    out.parentFile?.mkdirs()
-                                    context.contentResolver.openInputStream(uri)?.use { i -> out.outputStream().use { i.copyTo(it) } }
-                                }
+                        editing -> {
+                            IconButton(onClick = { startSave() }) {
+                                Icon(Icons.Rounded.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary)
                             }
-                            uz.kitobskaner.ui.components.shareFile(context, f, context.contentResolver.getType(uri) ?: "*/*")
                         }
-                    }) { Icon(Icons.Rounded.IosShare, null) }
+                        office && htmlFile != null -> {
+                            IconButton(onClick = {
+                                mobileView = !mobileView
+                                web.eval("QO.view('${if (mobileView) "mobile" else "desktop"}')")
+                            }) {
+                                Icon(
+                                    if (mobileView) Icons.Rounded.DesktopWindows else Icons.Rounded.PhoneAndroid,
+                                    stringResource(if (mobileView) R.string.view_desktop else R.string.view_mobile),
+                                )
+                            }
+                            IconButton(onClick = { searching = !searching; if (!searching) web.clearFind() }) { Icon(Icons.Rounded.Search, null) }
+                            IconButton(onClick = {
+                                searching = false
+                                web.clearFind()
+                                if (kindStr != "docx" && mobileView) mobileView = false
+                                editing = true
+                                web.eval("QO.edit(true)")
+                            }) { Icon(Icons.Rounded.Edit, stringResource(R.string.edit)) }
+                        }
+                        kind == DocKind.TXT -> IconButton(onClick = { saveTxt() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
+                        kind == DocKind.CSV && htmlFile != null ->
+                            IconButton(onClick = { searching = !searching; if (!searching) web.clearFind() }) { Icon(Icons.Rounded.Search, null) }
+                    }
+                    if (kind != DocKind.PDF && kind != DocKind.UNKNOWN && !editing) Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (htmlFile != null) DropdownMenuItem(
+                                text = { Text(stringResource(R.string.print_pdf)) },
+                                leadingIcon = { Icon(Icons.Rounded.Print, null) },
+                                onClick = { menu = false; web.print(context, base) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.share)) },
+                                leadingIcon = { Icon(Icons.Rounded.IosShare, null) },
+                                onClick = {
+                                    menu = false
+                                    scope.launch {
+                                        val bytes = work
+                                        val f = withContext(Dispatchers.IO) {
+                                            File(context.cacheDir, "share/$name").also { out ->
+                                                out.parentFile?.mkdirs()
+                                                if (bytes != null) out.writeBytes(bytes)
+                                                else context.contentResolver.openInputStream(uri)?.use { i -> out.outputStream().use { i.copyTo(it) } }
+                                            }
+                                        }
+                                        uz.kitobskaner.ui.components.shareFile(context, f, context.contentResolver.getType(uri) ?: "*/*")
+                                    }
+                                },
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
@@ -322,27 +492,27 @@ fun DocumentScreen(
                 .padding(pad)
         ) {
             when {
-                error != null -> Text(error!!, Modifier.align(Alignment.Center).padding(24.dp))
+                error != null -> Text(error!!, Modifier.align(Alignment.Center).padding(24.dp), textAlign = TextAlign.Center)
                 loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 kind == DocKind.PDF -> PdfViewer(uri)
                 kind == DocKind.LEGACY -> LegacyNotice(name)
-                !editing && htmlFile != null -> Column(Modifier.fillMaxSize()) {
-                    if (searching) SearchBar(query, onQuery = { query = it; web.find(it) }, onPrev = { web.next(false) }, onNext = { web.next(true) })
-                    OfficeWebView(htmlFile!!, web, Modifier.fillMaxSize())
-                }
-                kind == DocKind.DOCX -> if (editing) OutlinedTextField(
-                    value = markup,
-                    onValueChange = { markup = it },
-                    modifier = Modifier
+                htmlFile != null -> Column(
+                    Modifier
                         .fillMaxSize()
                         .imePadding()
-                        .padding(12.dp),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Serif),
-                    shape = RoundedCornerShape(18.dp),
-                    supportingText = { Text(stringResource(R.string.markup_hint)) },
-                ) else DocView(blocks)
-                kind == DocKind.XLSX -> SheetView(sheets, sheetIndex, onSheet = { sheetIndex = it }, onEdit = { dirty = true })
-                kind == DocKind.PPTX -> SlidesView(slides)
+                ) {
+                    if (searching) SearchBar(query, onQuery = { query = it; web.find(it) }, onPrev = { web.next(false) }, onNext = { web.next(true) })
+                    OfficeWebView(htmlFile!!, web, Modifier.weight(1f).fillMaxWidth())
+                    if (editing) EditToolbar(
+                        kind = kind,
+                        moveMode = moveMode,
+                        onJs = { web.eval(it) },
+                        onMove = { moveMode = !moveMode; web.eval("QO.layout($moveMode)") },
+                        onAddBox = { web.eval("QO.addBox(${Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(newText))})") },
+                        onDupSlide = { slideOp(true) },
+                        onDelSlide = { slideOp(false) },
+                    )
+                }
                 kind == DocKind.TXT -> OutlinedTextField(
                     value = text,
                     onValueChange = { text = it; dirty = true },
@@ -357,7 +527,173 @@ fun DocumentScreen(
             }
         }
     }
+
+    askSave?.let { bytes ->
+        AlertDialog(
+            onDismissRequest = { askSave = null; afterSave = null },
+            title = { Text(stringResource(R.string.save_where)) },
+            text = {
+                Column {
+                    TextButton(onClick = { askSave = null; doSave(bytes, true) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.save_original), Modifier.fillMaxWidth())
+                    }
+                    TextButton(onClick = { askSave = null; doSave(bytes, false) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.save_copy), Modifier.fillMaxWidth())
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { askSave = null; afterSave = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    leave?.let { action ->
+        AlertDialog(
+            onDismissRequest = { leave = null },
+            title = { Text(stringResource(R.string.unsaved_title)) },
+            text = { Text(stringResource(R.string.unsaved_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    leave = null
+                    if (kind == DocKind.TXT) { saveTxt(); return@TextButton }
+                    afterSave = action
+                    startSave()
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { leave = null }) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = {
+                        leave = null
+                        if (kind == DocKind.TXT) { dirty = false; action(); return@TextButton }
+                        discardAnd(action)
+                    }) { Text(stringResource(R.string.dont_save), color = MaterialTheme.colorScheme.error) }
+                }
+            },
+        )
+    }
     if (busy) ProgressDialog(stringResource(R.string.preparing), null)
+}
+
+// ---------------------------------------------------------------- tahrirlash paneli
+
+private val textColors = listOf(
+    "#000000", "#FFFFFF", "#E53935", "#FB8C00", "#FDD835", "#43A047", "#00ACC1", "#1E6BFF", "#8E24AA", "#6D4C41", "#757575",
+)
+private val markColors = listOf("transparent", "#FFF176", "#A5D6A7", "#81D4FA", "#F48FB1", "#FFCC80", "#E0E0E0")
+
+@Composable
+private fun EditToolbar(
+    kind: DocKind,
+    moveMode: Boolean,
+    onJs: (String) -> Unit,
+    onMove: () -> Unit,
+    onAddBox: () -> Unit,
+    onDupSlide: () -> Unit,
+    onDelSlide: () -> Unit,
+) {
+    var colorMenu by remember { mutableStateOf(false) }
+    var markMenu by remember { mutableStateOf(false) }
+    Surface(tonalElevation = 6.dp, shadowElevation = 12.dp, color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth()) {
+            val hint = when {
+                kind == DocKind.XLSX -> stringResource(R.string.xlsx_hint)
+                moveMode -> stringResource(R.string.move_mode)
+                else -> null
+            }
+            if (hint != null) Text(
+                hint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 6.dp),
+            )
+            Row(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Tool(Icons.AutoMirrored.Rounded.Undo) { onJs("QO.cmd('undo')") }
+                Tool(Icons.AutoMirrored.Rounded.Redo) { onJs("QO.cmd('redo')") }
+                if (kind != DocKind.XLSX) {
+                    Sep()
+                    Tool(Icons.Rounded.FormatBold, enabled = !moveMode) { onJs("QO.cmd('bold')") }
+                    Tool(Icons.Rounded.FormatItalic, enabled = !moveMode) { onJs("QO.cmd('italic')") }
+                    Tool(Icons.Rounded.FormatUnderlined, enabled = !moveMode) { onJs("QO.cmd('underline')") }
+                    Tool(Icons.Rounded.FormatStrikethrough, enabled = !moveMode) { onJs("QO.cmd('strikeThrough')") }
+                    Tool(Icons.Rounded.TextDecrease, enabled = !moveMode) { onJs("QO.size(-2)") }
+                    Tool(Icons.Rounded.TextIncrease, enabled = !moveMode) { onJs("QO.size(2)") }
+                    Box {
+                        Tool(Icons.Rounded.FormatColorText, enabled = !moveMode) { colorMenu = true }
+                        DropdownMenu(expanded = colorMenu, onDismissRequest = { colorMenu = false }) {
+                            Swatches(textColors, stringResource(R.string.text_color)) { c -> colorMenu = false; onJs("QO.cmd('foreColor','$c')") }
+                        }
+                    }
+                    Box {
+                        Tool(Icons.Rounded.FormatColorFill, enabled = !moveMode) { markMenu = true }
+                        DropdownMenu(expanded = markMenu, onDismissRequest = { markMenu = false }) {
+                            Swatches(markColors, stringResource(R.string.highlight_color)) { c -> markMenu = false; onJs("QO.cmd('hiliteColor','$c')") }
+                        }
+                    }
+                    Sep()
+                    Tool(Icons.AutoMirrored.Rounded.FormatAlignLeft, enabled = !moveMode) { onJs("QO.cmd('justifyLeft')") }
+                    Tool(Icons.Rounded.FormatAlignCenter, enabled = !moveMode) { onJs("QO.cmd('justifyCenter')") }
+                    Tool(Icons.AutoMirrored.Rounded.FormatAlignRight, enabled = !moveMode) { onJs("QO.cmd('justifyRight')") }
+                    Tool(Icons.Rounded.FormatAlignJustify, enabled = !moveMode) { onJs("QO.cmd('justifyFull')") }
+                }
+                if (kind == DocKind.PPTX) {
+                    Sep()
+                    Tool(Icons.Rounded.OpenWith, selected = moveMode, label = stringResource(R.string.move_mode)) { onMove() }
+                    Tool(Icons.Rounded.Delete, enabled = moveMode, label = stringResource(R.string.delete_shape)) { onJs("QO.del()") }
+                    Tool(Icons.Rounded.TextFields, label = stringResource(R.string.add_textbox)) { onAddBox() }
+                    Tool(Icons.Rounded.AddToPhotos, label = stringResource(R.string.dup_slide)) { onDupSlide() }
+                    Tool(Icons.Rounded.DeleteSweep, label = stringResource(R.string.del_slide)) { onDelSlide() }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Tool(icon: ImageVector, enabled: Boolean = true, selected: Boolean = false, label: String? = null, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        colors = if (selected) IconButtonDefaults.iconButtonColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ) else IconButtonDefaults.iconButtonColors(),
+    ) { Icon(icon, label) }
+}
+
+@Composable
+private fun Sep() {
+    VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp))
+}
+
+@Composable
+private fun Swatches(colors: List<String>, title: String, onPick: (String) -> Unit) {
+    Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
+    Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        colors.take(6).forEach { c -> Swatch(c, onPick) }
+    }
+    if (colors.size > 6) Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        colors.drop(6).forEach { c -> Swatch(c, onPick) }
+    }
+}
+
+@Composable
+private fun Swatch(c: String, onPick: (String) -> Unit) {
+    val color = if (c == "transparent") Color.White else Color(android.graphics.Color.parseColor(c))
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            .clickable { onPick(c) },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (c == "transparent") Text("∅", color = Color.Gray)
+    }
 }
 
 // ---------------------------------------------------------------- PDF
@@ -446,184 +782,6 @@ private fun PdfViewer(uri: Uri) {
         }
     }
 }
-
-// ---------------------------------------------------------------- Word
-
-@Composable
-private fun DocView(blocks: List<TextBlock>) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-        item {
-            GlassCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (blocks.isEmpty()) Text(stringResource(R.string.no_text_found))
-                    blocks.forEach { b ->
-                        val annotated = buildAnnotatedString {
-                            for (s in b.spans) {
-                                withStyle(SpanStyle(fontWeight = if (s.bold) FontWeight.Bold else null, fontStyle = if (s.italic) FontStyle.Italic else null)) {
-                                    append(s.text)
-                                }
-                            }
-                        }
-                        val style = when (b.type) {
-                            BlockType.HEADING1 -> MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-                            BlockType.HEADING2 -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                            else -> MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp)
-                        }
-                        Text(
-                            annotated, style = style, fontFamily = FontFamily.Serif,
-                            textAlign = when (b.align) {
-                                Align.CENTER -> TextAlign.Center
-                                Align.RIGHT -> TextAlign.End
-                                Align.JUSTIFY -> TextAlign.Justify
-                                Align.LEFT -> TextAlign.Start
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------- Excel
-
-private fun colName(i: Int): String {
-    var n = i + 1
-    val sb = StringBuilder()
-    while (n > 0) { val m = (n - 1) % 26; sb.insert(0, 'A' + m); n = (n - 1) / 26 }
-    return sb.toString()
-}
-
-@Composable
-private fun SheetView(sheets: SnapshotStateList<Sheet>, index: Int, onSheet: (Int) -> Unit, onEdit: () -> Unit) {
-    if (sheets.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.no_text_found)) }
-        return
-    }
-    val sheet = sheets[index.coerceIn(0, sheets.size - 1)]
-    // tahrirlanadigan nusxa: o'zgarish darhol ko'rinishi uchun versiya hisoblagichi
-    var version by remember(sheet) { mutableIntStateOf(0) }
-    val cols = maxOf(6, (sheet.rows.maxOfOrNull { it.size } ?: 0) + 1).coerceAtMost(40)
-    val rowsCount = maxOf(20, sheet.rows.size + 5)
-    val hScroll = rememberScrollState()
-    val border = MaterialTheme.colorScheme.outlineVariant
-    Column(Modifier.fillMaxSize()) {
-        if (sheets.size > 1) Row(
-            Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            sheets.forEachIndexed { i, s -> FilterChip(selected = i == index, onClick = { onSheet(i) }, label = { Text(s.name) }) }
-        }
-        GlassCard(
-            Modifier
-                .fillMaxSize()
-                .padding(10.dp), shape = RoundedCornerShape(18.dp)
-        ) {
-            LazyColumn(Modifier.fillMaxSize()) {
-                item {
-                    Row(Modifier.horizontalScroll(hScroll)) {
-                        HeaderCell("", 44)
-                        for (c in 0 until cols) HeaderCell(colName(c), 112)
-                    }
-                }
-                items(rowsCount) { r ->
-                    Row(Modifier.horizontalScroll(hScroll)) {
-                        HeaderCell("${r + 1}", 44)
-                        for (c in 0 until cols) {
-                            val value = sheet.rows.getOrNull(r)?.getOrNull(c) ?: ""
-                            if (version < 0) return@items
-                            BasicTextField(
-                                value = value,
-                                onValueChange = { v ->
-                                    while (sheet.rows.size <= r) sheet.rows += ArrayList<String>()
-                                    val row = sheet.rows[r]
-                                    while (row.size <= c) row += ""
-                                    row[c] = v
-                                    version++
-                                    onEdit()
-                                },
-                                singleLine = true,
-                                textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
-                                    textAlign = if (value.toDoubleOrNull() != null) TextAlign.End else TextAlign.Start),
-                                modifier = Modifier
-                                    .width(112.dp)
-                                    .height(40.dp)
-                                    .border(0.5.dp, border)
-                                    .padding(horizontal = 6.dp, vertical = 10.dp),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HeaderCell(text: String, width: Int) {
-    Box(
-        Modifier
-            .width(width.dp)
-            .height(32.dp)
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
-            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-        contentAlignment = Alignment.Center
-    ) { Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) }
-}
-
-// ---------------------------------------------------------------- PowerPoint
-
-@Composable
-private fun SlidesView(slides: List<Slide>) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        itemsIndexed(slides) { i, s ->
-            GlassCard(
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-            ) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("${i + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    Text(s.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2)
-                    Spacer(Modifier.height(8.dp))
-                    s.lines.take(8).forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, maxLines = 2) }
-                }
-            }
-        }
-    }
-}
-
-/** Slaydlarni 16:9 PDF sahifalariga chiqaradi (matn ko'rinishida). */
-private fun slidesToPdf(slides: List<Slide>, out: File) {
-    val doc = PdfDocument()
-    try {
-        val w = 960; val h = 540
-        slides.forEachIndexed { i, s ->
-            val page = doc.startPage(PdfDocument.PageInfo.Builder(w, h, i + 1).create())
-            val c = page.canvas
-            c.drawColor(AColor.WHITE)
-            val accent = android.graphics.Paint().apply { color = AColor.rgb(79, 70, 229) }
-            c.drawRect(0f, 0f, w.toFloat(), 8f, accent)
-            val tp = TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 34f; isFakeBoldText = true; color = AColor.rgb(20, 20, 30) }
-            val title = StaticLayout.Builder.obtain(s.title, 0, s.title.length, tp, w - 96).build()
-            c.save(); c.translate(48f, 48f); title.draw(c); c.restore()
-            val bp = TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 22f; color = AColor.rgb(50, 50, 64) }
-            val body = s.lines.joinToString("\n") { "•  $it" }
-            val bl = StaticLayout.Builder.obtain(body, 0, body.length, bp, w - 120).setLineSpacing(6f, 1f)
-                .setAlignment(Layout.Alignment.ALIGN_NORMAL).setMaxLines(14).build()
-            c.save(); c.translate(60f, 64f + title.height + 18f); bl.draw(c); c.restore()
-            doc.finishPage(page)
-        }
-        if (slides.isEmpty()) { doc.finishPage(doc.startPage(PdfDocument.PageInfo.Builder(w, h, 1).create())) }
-        out.outputStream().use { doc.writeTo(it) }
-    } finally {
-        doc.close()
-    }
-}
-
 
 @Composable
 private fun SearchBar(query: String, onQuery: (String) -> Unit, onPrev: () -> Unit, onNext: () -> Unit) {

@@ -273,4 +273,26 @@
     <string name="search_in_doc">Search in document</string>
     <string name="legacy_format">This is a legacy-format file (DOC, XLS, PPT, RTF or ODF). QulayOfis opens modern DOCX, XLSX, PPTX, PDF, CSV and TXT. Re-save it as DOCX/XLSX/PPTX in Word/Excel/WPS or ask the sender for the new format.</string>
     <string name="err_encrypted">This file is password-protected or in an old format (.doc/.xls/.ppt). Save it without a password as .docx/.xlsx/.pptx.</string>
+    <string name="view_desktop">Desktop view (pages)</string>
+    <string name="view_mobile">Mobile view</string>
+    <string name="save_where">Where should the changes be saved?</string>
+    <string name="save_original">Overwrite the original file</string>
+    <string name="save_copy">Save as a new copy</string>
+    <string name="unsaved_title">Unsaved changes</string>
+    <string name="unsaved_msg">Save the changes you made?</string>
+    <string name="dont_save">Don\'t save</string>
+    <string name="move_mode">Move: drag a shape, the corner circle resizes it</string>
+    <string name="add_textbox">Add text box</string>
+    <string name="delete_shape">Delete selected shape</string>
+    <string name="dup_slide">Duplicate slide</string>
+    <string name="del_slide">Delete slide</string>
+    <string name="new_text">New text</string>
+    <string name="saved_original">Original file updated</string>
+    <string name="saved_copy_fallback">Could not overwrite the original — saved a copy</string>
+    <string name="xlsx_hint">Tap a cell and type.</string>
+    <string name="text_color">Text color</string>
+    <string name="highlight_color">Highlight</string>
+    <string name="last_slide">Cannot delete the only slide</string>
+    <string name="editing_on">Editing: tap text to type</string>
+    <string name="print_pdf">Print / PDF</string>
 </resources>
