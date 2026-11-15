@@ -203,7 +203,7 @@
     <string name="tool_compress">PDF siqish</string>
     <string name="tool_compress_sub">Hajmni 80% gacha kamaytiradi</string>
     <string name="tool_images_pdf">Rasmlardan PDF</string>
-    <string name="tool_images_pdf_sub">Galereyadagi rasmlardan kitob</string>
+    <string name="tool_images_pdf_sub">Tanlash, tartiblash, A4/A5/Letter, chegaralar, sifat</string>
     <string name="tool_pdf_excel">PDF → Excel</string>
     <string name="tool_pdf_excel_sub">Jadvallarni XLSX\'ga o\'tkazish</string>
     <string name="tool_pdf_jpg">PDF → JPG</string>
@@ -446,4 +446,17 @@
     <string name="copy">Nusxa olish</string>
     <string name="copied">Nusxalandi</string>
     <string name="no_page_text">Bu sahifada matn qatlami yo‘q (skanerlangan). Matnni olish uchun “PDF → Word” (OCR) dan foydalaning.</string>
+    <string name="edit_page">Sahifani tahrirlash</string>
+    <string name="crop_corners">Burchaklar</string>
+    <string name="result_preview">Natija</string>
+    <string name="auto_edges">Avto chegara</string>
+    <string name="full_image">Butun rasm</string>
+    <string name="brightness">Yorqinlik</string>
+    <string name="contrast">Kontrast</string>
+    <string name="selected_image">%d-rasm tanlangan</string>
+    <string name="size_original">Asl</string>
+    <string name="orientation">Yo‘nalish</string>
+    <string name="orient_auto">Avto</string>
+    <string name="images_pdf_name">Rasmlar</string>
+    <string name="make_pdf_n">PDF yaratish (%d ta rasm)</string>
 </resources>

@@ -290,6 +290,26 @@ class ProjectRepository(private val context: Context, private val settings: Sett
         _ocrRevision.value++
     }
 
+    /** Sahifa rasmini almashtiradi (kesish/perspektiva/filtrdan keyin), matnni qayta aniqlash uchun belgilaydi. */
+    suspend fun replacePage(id: String, pageId: String, bmp: Bitmap) {
+        withContext(Dispatchers.IO) {
+            ImageUtils.saveJpeg(bmp, pageFile(id, pageId), 93)
+            val thumb = ImageUtils.scaleDown(bmp.copy(Bitmap.Config.ARGB_8888, false), THUMB_SIDE)
+            ImageUtils.saveJpeg(thumb, thumbFile(id, pageId), 85)
+            thumb.recycle()
+            ocrFile(id, pageId).delete()
+            imagesDir(id).listFiles()?.filter { it.name.startsWith("${pageId}_") }?.forEach { it.delete() }
+        }
+        mutate(id) { p ->
+            p.copy(pages = p.pages.map {
+                if (it.id == pageId) it.copy(ocrDone = false, confidence = -1, revision = it.revision + 1) else it
+            })
+        }
+        _ocrRevision.value++
+    }
+
+    fun maxPageSide() = MAX_PAGE_SIDE
+
     suspend fun resetOcr(id: String, pageIds: Collection<String>) {
         withContext(Dispatchers.IO) {
             pageIds.forEach { pid ->

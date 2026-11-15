@@ -174,7 +174,7 @@ fun MainScreen(
     val tools = listOf(
         Tool(R.drawable.ic3d_scan, R.string.tool_scan, R.string.tool_scan_sub, 0) { showSource = true },
         Tool(R.drawable.ic3d_book, R.string.src_bookcam, R.string.src_bookcam_hint, 0, onBookCam),
-        Tool(R.drawable.ic3d_gallery, R.string.tool_images_pdf, R.string.tool_images_pdf_sub, 0) { source.gallery() },
+        Tool(R.drawable.ic3d_gallery, R.string.tool_images_pdf, R.string.tool_images_pdf_sub, 0) { onPdfOp("images") },
         Tool(R.drawable.ic3d_ocr, R.string.tool_pdf_ocr, R.string.tool_pdf_ocr_sub, 0) { openPdf() },
         Tool(R.drawable.ic3d_word, R.string.new_word, R.string.new_word_sub, 1) { onNewDoc("docx") },
         Tool(R.drawable.ic3d_excel, R.string.new_excel, R.string.new_excel_sub, 1) { onNewDoc("xlsx") },

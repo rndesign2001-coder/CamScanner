@@ -202,7 +202,7 @@
     <string name="tool_compress">Сжать PDF</string>
     <string name="tool_compress_sub">Уменьшает размер до 80%</string>
     <string name="tool_images_pdf">Фото в PDF</string>
-    <string name="tool_images_pdf_sub">Книга из фото в галерее</string>
+    <string name="tool_images_pdf_sub">Выбор, порядок, A4/A5/Letter, поля, качество</string>
     <string name="tool_pdf_excel">PDF → Excel</string>
     <string name="tool_pdf_excel_sub">Таблицы в XLSX</string>
     <string name="tool_pdf_jpg">PDF → JPG</string>
@@ -445,4 +445,17 @@
     <string name="copy">Копировать</string>
     <string name="copied">Скопировано</string>
     <string name="no_page_text">На странице нет текстового слоя (скан). Используйте OCR.</string>
+    <string name="edit_page">Редактировать страницу</string>
+    <string name="crop_corners">Углы</string>
+    <string name="result_preview">Результат</string>
+    <string name="auto_edges">Авто границы</string>
+    <string name="full_image">Всё изображение</string>
+    <string name="brightness">Яркость</string>
+    <string name="contrast">Контраст</string>
+    <string name="selected_image">Выбрано изображение %d</string>
+    <string name="size_original">Оригинал</string>
+    <string name="orientation">Ориентация</string>
+    <string name="orient_auto">Авто</string>
+    <string name="images_pdf_name">Изображения</string>
+    <string name="make_pdf_n">Создать PDF (%d изобр.)</string>
 </resources>

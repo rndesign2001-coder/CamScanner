@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RotateRight
+import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -105,7 +106,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
+fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit, onEditImage: (String) -> Unit = {}) {
     val context = LocalContext.current
     val repo = App.instance.repository
     val project by remember(projectId) { repo.projectFlow(projectId) }.collectAsState(initial = repo.get(projectId))
@@ -168,6 +169,7 @@ fun PageScreen(projectId: String, startIndex: Int, onBack: () -> Unit) {
                             editing = false
                         }) { Icon(Icons.Rounded.Check, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
                     } else {
+                        IconButton(onClick = { onEditImage(page.id) }) { Icon(Icons.Rounded.Crop, stringResource(R.string.edit_page)) }
                         IconButton(onClick = {
                             scope.launch { repo.rotatePage(projectId, page.id, 90f); OcrWorker.start(context, projectId) }
                         }) { Icon(Icons.Rounded.RotateRight, stringResource(R.string.rotate)) }

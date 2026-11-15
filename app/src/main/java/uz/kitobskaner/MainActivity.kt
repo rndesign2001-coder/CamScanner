@@ -144,6 +144,7 @@ class MainActivity : ComponentActivity() {
                                 when (m) {
                                     "pages" -> nav.navigate("pdfpages")
                                     "annotate" -> nav.navigate("pdfannot")
+                                    "images" -> nav.navigate("imagespdf")
                                     else -> nav.navigate("pdfops/$m")
                                 }
                             },
@@ -168,7 +169,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         val id = it.arguments?.getString("id") ?: return@composable
                         val index = it.arguments?.getInt("index") ?: 0
-                        PageScreen(projectId = id, startIndex = index, onBack = { nav.popBackStack() })
+                        PageScreen(projectId = id, startIndex = index, onBack = { nav.popBackStack() }, onEditImage = { pid -> nav.navigate("pageedit/$id/$pid") })
                     }
                     composable("export/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
                         val id = it.arguments?.getString("id") ?: return@composable
@@ -242,6 +243,19 @@ class MainActivity : ComponentActivity() {
                             initial = raw.takeIf { s -> s.isNotEmpty() }?.let { s -> Uri.parse(s) },
                             onBack = { nav.popBackStack() },
                             onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) },
+                        )
+                    }
+                    composable("pageedit/{project}/{page}") {
+                        uz.kitobskaner.ui.page.PageEditScreen(
+                            projectId = it.arguments?.getString("project") ?: return@composable,
+                            pageId = it.arguments?.getString("page") ?: return@composable,
+                            onBack = { nav.popBackStack() },
+                        )
+                    }
+                    composable("imagespdf") {
+                        uz.kitobskaner.ui.tools.ImagesToPdfScreen(
+                            onBack = { nav.popBackStack() },
+                            onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) { popUpTo("main") } },
                         )
                     }
                     composable("pdfops/{mode}", arguments = listOf(navArgument("mode") { type = NavType.StringType })) {

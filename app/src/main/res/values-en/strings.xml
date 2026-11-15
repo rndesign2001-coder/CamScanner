@@ -202,7 +202,7 @@
     <string name="tool_compress">Compress PDF</string>
     <string name="tool_compress_sub">Shrinks size by up to 80%</string>
     <string name="tool_images_pdf">Images to PDF</string>
-    <string name="tool_images_pdf_sub">Make a book from gallery photos</string>
+    <string name="tool_images_pdf_sub">Pick, reorder, A4/A5/Letter, margins, quality</string>
     <string name="tool_pdf_excel">PDF → Excel</string>
     <string name="tool_pdf_excel_sub">Tables to XLSX</string>
     <string name="tool_pdf_jpg">PDF → JPG</string>
@@ -445,4 +445,17 @@
     <string name="copy">Copy</string>
     <string name="copied">Copied</string>
     <string name="no_page_text">This page has no text layer (scanned). Use OCR conversion.</string>
+    <string name="edit_page">Edit page</string>
+    <string name="crop_corners">Corners</string>
+    <string name="result_preview">Result</string>
+    <string name="auto_edges">Auto edges</string>
+    <string name="full_image">Full image</string>
+    <string name="brightness">Brightness</string>
+    <string name="contrast">Contrast</string>
+    <string name="selected_image">Image %d selected</string>
+    <string name="size_original">Original</string>
+    <string name="orientation">Orientation</string>
+    <string name="orient_auto">Auto</string>
+    <string name="images_pdf_name">Images</string>
+    <string name="make_pdf_n">Create PDF (%d images)</string>
 </resources>
