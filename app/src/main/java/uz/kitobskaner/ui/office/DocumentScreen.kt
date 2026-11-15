@@ -40,6 +40,8 @@ import androidx.compose.material.icons.automirrored.rounded.FormatAlignRight
 import androidx.compose.material.icons.automirrored.rounded.Redo
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Category
+import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -245,6 +247,7 @@ fun DocumentScreen(
     var statsJson by remember { mutableStateOf<String?>(null) }
     var rangeMode by remember { mutableStateOf(false) }
     var pendingSheet by remember { mutableIntStateOf(-1) }
+    var layoutNames by remember { mutableStateOf<List<String>>(emptyList()) }
     val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
     val errEnc = stringResource(R.string.err_encrypted)
@@ -442,6 +445,36 @@ fun DocumentScreen(
         }
     }
 
+    /** PowerPoint slayd amallari: yangi slayd, surish, maket, fon. */
+    fun pptOp(op: String, arg: String?) {
+        scope.launch {
+            busy = true
+            try {
+                val b = pending() ?: return@launch
+                val cur = web.call("QO.cur()")?.toIntOrNull() ?: 0
+                var target = cur
+                val nb = withContext(Dispatchers.Default) {
+                    when (op) {
+                        "new" -> { target = cur + 1; OfficeEditor.addSlide(b, cur, arg?.toIntOrNull() ?: 1) }
+                        "up" -> { target = maxOf(0, cur - 1); OfficeEditor.moveSlide(b, cur, -1) }
+                        "down" -> { target = cur + 1; OfficeEditor.moveSlide(b, cur, 1) }
+                        "layout" -> OfficeEditor.setSlideLayout(b, cur, arg?.toIntOrNull() ?: 0)
+                        "bg" -> OfficeEditor.setSlideBackground(b, cur, arg?.removePrefix("all:") ?: "#FFFFFF", arg?.startsWith("all:") == true)
+                        else -> b
+                    }
+                }
+                if (nb === b) return@launch
+                setWork(nb, true)
+                pendingSlide = target
+                render(nb)
+            } catch (e: Throwable) {
+                toast(context, e.message ?: e.javaClass.simpleName)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     /** Excel tuzilma amali: joriy tanlov bo'yicha, so'ng qayta chiziladi. */
     fun xop(op: String, extra: String? = null) {
         scope.launch {
@@ -486,7 +519,8 @@ fun DocumentScreen(
             val k = "${++imgSeq}"
             newImages[k] = r.bytes
             val src = "data:image/jpeg;base64," + android.util.Base64.encodeToString(r.bytes, android.util.Base64.NO_WRAP)
-            web.eval("QO.insImg('$k','$src',${r.wPt},${r.hPt})") { res -> if (res != "true") { newImages.remove(k); toast(context, needCursorMsg) } }
+            val fn = if (kind == Fmt.PPTX) "QO.addPic" else "QO.insImg"
+            web.eval("$fn('$k','$src',${r.wPt},${r.hPt})") { res -> if (res != "true") { newImages.remove(k); toast(context, needCursorMsg) } }
         }
     }
 
@@ -699,8 +733,16 @@ fun DocumentScreen(
                         onDelSlide = { slideOp(false) },
                         onImage = { imagePicker.launch("image/*") },
                         onDialog = { d ->
-                            if (d == "count") web.eval("QO.stats()") { statsJson = jsString(it); dialog = d } else dialog = d
+                            when (d) {
+                                "count" -> web.eval("QO.stats()") { statsJson = jsString(it); dialog = d }
+                                "layoutNew", "layoutChange" -> scope.launch {
+                                    layoutNames = withContext(Dispatchers.Default) { work?.let { w -> OfficeEditor.pptxLayouts(w).map { it.name } } ?: emptyList() }
+                                    dialog = d
+                                }
+                                else -> dialog = d
+                            }
                         },
+                        onSlide = { op, arg -> pptOp(op, arg) },
                     )
                 }
                 kind == Fmt.TXT -> OutlinedTextField(
@@ -771,6 +813,11 @@ fun DocumentScreen(
             web.eval("QO.replaceAll(${jsLit(f)},${jsLit(r)},$mc)") { res -> toast(context, String.format(replacedFmt, res?.toIntOrNull() ?: 0)) }
         }
         "count" -> StatsDialog(statsJson, onDismiss = { dialog = null })
+        "layoutNew", "layoutChange" -> LayoutDialog(layoutNames, onDismiss = { dialog = null }) { i ->
+            val d = dialog
+            dialog = null
+            pptOp(if (d == "layoutNew") "new" else "layout", i.toString())
+        }
         "sheetAdd" -> TextInputDialog(stringResource(R.string.add_sheet), stringResource(R.string.sheet_name), onDismiss = { dialog = null }) { v ->
             dialog = null; xop("addSheet", v)
         }
@@ -871,10 +918,18 @@ private fun EditToolbar(
     onDelSlide: () -> Unit,
     onImage: () -> Unit,
     onDialog: (String) -> Unit,
+    onSlide: (String, String?) -> Unit = { _, _ -> },
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf<String?>(null) }
+    var bgAll by remember { mutableStateOf(false) }
     val word = kind == Fmt.DOCX
+    val ppt = kind == Fmt.PPTX
+    val tabs = when (kind) {
+        Fmt.DOCX -> listOf(R.string.tab_home, R.string.tab_insert, R.string.tab_layout, R.string.tab_review)
+        Fmt.PPTX -> listOf(R.string.tab_home, R.string.tab_insert, R.string.tab_slide)
+        else -> emptyList()
+    }
     Surface(tonalElevation = 6.dp, shadowElevation = 12.dp, color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth()) {
             val hint = when {
@@ -886,13 +941,13 @@ private fun EditToolbar(
                 hint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 6.dp),
             )
-            if (word) Row(
+            if (tabs.isNotEmpty()) Row(
                 Modifier
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 8.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                listOf(R.string.tab_home, R.string.tab_insert, R.string.tab_layout, R.string.tab_review).forEachIndexed { i, t ->
+                tabs.forEachIndexed { i, t ->
                     val on = tab == i
                     Text(
                         stringResource(t),
@@ -912,7 +967,7 @@ private fun EditToolbar(
                     .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val t = if (word) tab else 0
+                val t = if (tabs.isNotEmpty()) tab.coerceAtMost(tabs.size - 1) else 0
                 if (t == 0) {
                     Tool(Icons.AutoMirrored.Rounded.Undo) { onJs("QO.cmd('undo')") }
                     Tool(Icons.AutoMirrored.Rounded.Redo) { onJs("QO.cmd('redo')") }
@@ -990,13 +1045,44 @@ private fun EditToolbar(
                     LabeledTool(Icons.Rounded.FindReplace, stringResource(R.string.find_replace)) { onDialog("find") }
                     LabeledTool(Icons.Rounded.Tag, stringResource(R.string.word_count)) { onDialog("count") }
                 }
-                if (kind == Fmt.PPTX) {
+                if (ppt && t == 0) {
                     Sep()
                     Tool(Icons.Rounded.OpenWith, selected = moveMode, label = stringResource(R.string.move_mode)) { onMove() }
                     Tool(Icons.Rounded.Delete, enabled = moveMode, label = stringResource(R.string.delete_shape)) { onJs("QO.del()") }
-                    Tool(Icons.Rounded.TextFields, label = stringResource(R.string.add_textbox)) { onAddBox() }
-                    Tool(Icons.Rounded.AddToPhotos, label = stringResource(R.string.dup_slide)) { onDupSlide() }
-                    Tool(Icons.Rounded.DeleteSweep, label = stringResource(R.string.del_slide)) { onDelSlide() }
+                }
+                if (ppt && t == 1) {
+                    LabeledTool(Icons.Rounded.TextFields, stringResource(R.string.add_textbox)) { onAddBox() }
+                    LabeledTool(Icons.Rounded.Image, stringResource(R.string.insert_image)) { onImage() }
+                    Box {
+                        LabeledTool(Icons.Rounded.Category, stringResource(R.string.insert_shape)) { menu = "shape" }
+                        DropdownMenu(expanded = menu == "shape", onDismissRequest = { menu = null }) {
+                            listOf("rect" to R.string.shape_rect, "roundRect" to R.string.shape_round, "ellipse" to R.string.shape_ellipse,
+                                "triangle" to R.string.shape_triangle, "rightArrow" to R.string.shape_arrow, "star5" to R.string.shape_star).forEach { (k, l) ->
+                                DropdownMenuItem(text = { Text(stringResource(l)) }, onClick = { menu = null; onJs("QO.addShape('$k','#2563EB')") })
+                            }
+                        }
+                    }
+                    LabeledTool(Icons.Rounded.OpenWith, stringResource(R.string.move_mode)) { onMove() }
+                }
+                if (ppt && t == 2) {
+                    LabeledTool(Icons.Rounded.Add, stringResource(R.string.new_slide)) { onDialog("layoutNew") }
+                    LabeledTool(Icons.Rounded.AddToPhotos, stringResource(R.string.dup_slide)) { onDupSlide() }
+                    LabeledTool(Icons.Rounded.DeleteSweep, stringResource(R.string.del_slide)) { onDelSlide() }
+                    LabeledTool(Icons.Rounded.ArrowUpward, stringResource(R.string.move_up)) { onSlide("up", null) }
+                    LabeledTool(Icons.Rounded.ArrowDownward, stringResource(R.string.move_down)) { onSlide("down", null) }
+                    LabeledTool(Icons.Rounded.Dashboard, stringResource(R.string.change_layout)) { onDialog("layoutChange") }
+                    Box {
+                        LabeledTool(Icons.Rounded.FormatColorFill, stringResource(R.string.slide_bg)) { menu = "bg" }
+                        DropdownMenu(expanded = menu == "bg", onDismissRequest = { menu = null }) {
+                            Swatches(listOf("#FFFFFF", "#F7F8FA", "#17191F", "#2563EB", "#16A36A", "#E5484D", "#F59E0B", "#7C3AED", "#0EA5E9", "#FDE68A", "#E2E8F0"), stringResource(R.string.slide_bg)) { c ->
+                                menu = null; onSlide("bg", (if (bgAll) "all:" else "") + c)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { bgAll = !bgAll }.padding(horizontal = 8.dp)) {
+                                androidx.compose.material3.Checkbox(bgAll, { bgAll = it })
+                                Text(stringResource(R.string.bg_all))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1438,6 +1524,40 @@ private fun TextInputDialog(title: String, label: String, initial: String = "", 
         title = { Text(title) },
         text = { OutlinedTextField(v, { v = it }, label = { Text(label) }, singleLine = true) },
         confirmButton = { TextButton(onClick = { onOk(v.trim()) }) { Text(stringResource(R.string.apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+
+private val layoutLabels = mapOf(
+    "title slide" to R.string.lay_title, "title and content" to R.string.lay_title_content, "section header" to R.string.lay_section,
+    "two content" to R.string.lay_two, "comparison" to R.string.lay_compare, "title only" to R.string.lay_title_only, "blank" to R.string.lay_blank,
+    "content with caption" to R.string.lay_caption, "picture with caption" to R.string.lay_pic_caption,
+)
+
+@Composable
+private fun LayoutDialog(names: List<String>, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.choose_layout)) },
+        text = {
+            LazyColumn {
+                items(names.size) { i ->
+                    val n = names[i]
+                    val label = layoutLabels[n.lowercase()]?.let { stringResource(it) } ?: n
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onPick(i) }
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

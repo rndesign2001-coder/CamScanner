@@ -855,7 +855,11 @@ object OfficeEditor {
             val b = bj.jsonObject
             val path = paths.getOrNull((b["slide"] as? JsonPrimitive)?.intOrNull ?: -1) ?: return@forEach
             val d = pkg.doc(path, tags) ?: return@forEach
-            addTextBox(pkg, fl, d, b)
+            when {
+                b.str("img") != null -> addPicture(pkg, path, d, b)
+                b.str("prst") != null -> addShape(pkg, fl, d, b)
+                else -> addTextBox(pkg, fl, d, b)
+            }
         }
         for (p in paths) pkg.docs[p]?.let { d -> ensureParagraphs(d, "p:txBody", "a:p"); ensureParagraphs(d, "a:txBody", "a:p") }
     }
@@ -918,6 +922,188 @@ object OfficeEditor {
         sp.appendChild(tx)
         val ext = tree.child("p:extLst")
         if (ext != null) tree.insertBefore(sp, ext) else tree.appendChild(sp)
+    }
+
+    // ---------------------------------------------------------------- PPTX: yangi rasm/shakl, slayd amallari
+
+    private fun maxShapeId(d: Document): Int {
+        var maxId = 1
+        val nl = d.getElementsByTagName("p:cNvPr")
+        for (i in 0 until nl.length) (nl.item(i) as Element).getAttribute("id").toIntOrNull()?.let { if (it > maxId) maxId = it }
+        return maxId
+    }
+
+    private fun appendToTree(d: Document, el: Element) {
+        val tree = d.getElementsByTagName("p:spTree").item(0) as? Element ?: return
+        val ext = tree.child("p:extLst")
+        if (ext != null) tree.insertBefore(el, ext) else tree.appendChild(el)
+    }
+
+    private fun addPicture(pkg: Pkg, slidePath: String, d: Document, b: JsonObject) {
+        val bytes = pkg.images[b.str("img") ?: return] ?: return
+        val png = bytes.size > 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte()
+        val ext = if (png) "png" else "jpeg"
+        var n = 1
+        while (pkg.files.containsKey("ppt/media/qo_image$n.$ext")) n++
+        pkg.files["ppt/media/qo_image$n.$ext"] = bytes
+        addDefault(pkg, ext, if (png) "image/png" else "image/jpeg")
+        val rid = addRel(pkg, slidePath, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", "../media/qo_image$n.$ext")
+        ensureNs(d.documentElement, "xmlns:r" to R_NS, "xmlns:a" to "http://schemas.openxmlformats.org/drawingml/2006/main")
+        val id = maxShapeId(d) + 1
+        appendToTree(d, fragment(d, """<p:pic><p:nvPicPr><p:cNvPr id="$id" name="Picture $id"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="$rid"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${emu(b.num("x") ?: 0.0)}" y="${emu(b.num("y") ?: 0.0)}"/><a:ext cx="${emu(b.num("w") ?: 100.0)}" cy="${emu(b.num("h") ?: 100.0)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""))
+    }
+
+    private fun addShape(pkg: Pkg, fl: Flavor, d: Document, b: JsonObject) {
+        val prst = b.str("prst")?.takeIf { it.matches(Regex("[A-Za-z0-9]+")) } ?: "rect"
+        val fill = b.str("fill")?.takeIf { it.matches(Regex("[0-9A-Fa-f]{6}")) } ?: "4472C4"
+        val id = maxShapeId(d) + 1
+        val sp = fragment(d, """<p:sp><p:nvSpPr><p:cNvPr id="$id" name="Shape $id"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${emu(b.num("x") ?: 0.0)}" y="${emu(b.num("y") ?: 0.0)}"/><a:ext cx="${emu(b.num("w") ?: 100.0)}" cy="${emu(b.num("h") ?: 100.0)}"/></a:xfrm><a:prstGeom prst="$prst"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${fill.uppercase()}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr rtlCol="0" anchor="ctr"/><a:lstStyle/></p:txBody></p:sp>""")
+        val tx = sp.child("p:txBody")!!
+        (b["ps"] as? JsonArray)?.forEach { pj ->
+            val p = d.createElement("a:p")
+            tx.appendChild(p)
+            rebuild(pkg, fl, p, pj.jsonObject)
+            if (p.child("a:pPr") == null) p.insertBefore(d.createElement("a:pPr").also { it.setAttribute("algn", "ctr") }, p.firstChild)
+        }
+        if (tx.kids().none { it.tagName == "a:p" }) tx.appendChild(fragment(d, """<a:p><a:pPr algn="ctr"/></a:p>"""))
+        appendToTree(d, sp)
+    }
+
+    class LayoutInfo(val path: String, val name: String)
+
+    /** Birinchi master maketlari (PowerPoint'dagi tartibda). */
+    fun pptxLayouts(bytes: ByteArray): List<LayoutInfo> = layouts(Pkg(readZip(bytes)))
+
+    private fun layouts(pkg: Pkg): List<LayoutInfo> {
+        val master = pkg.files.keys.filter { it.matches(Regex("ppt/slideMasters/slideMaster\\d+\\.xml")) }.minByOrNull { it.length * 100 + (it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0) }
+        val out = ArrayList<LayoutInfo>()
+        if (master != null) {
+            val r = rels(pkg, master)
+            val md = pkg.doc(master)
+            val ids = md?.getElementsByTagName("p:sldLayoutId")
+            if (ids != null) for (i in 0 until ids.length) r[(ids.item(i) as Element).getAttribute("r:id")]?.let { p -> if (pkg.files.containsKey(p)) out += LayoutInfo(p, layoutName(pkg, p)) }
+        }
+        if (out.isEmpty()) pkg.files.keys.filter { it.matches(Regex("ppt/slideLayouts/slideLayout\\d+\\.xml")) }
+            .sortedBy { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }.forEach { out += LayoutInfo(it, layoutName(pkg, it)) }
+        return out
+    }
+
+    private fun layoutName(pkg: Pkg, path: String): String =
+        (pkg.doc(path)?.getElementsByTagName("p:cSld")?.item(0) as? Element)?.getAttribute("name")?.ifEmpty { null }
+            ?: path.substringAfterLast('/').removeSuffix(".xml")
+
+    /** Yangi slaydni ro'yxatga qo'shadi ([after] dan keyin; -1 — oxiriga). */
+    private fun registerSlide(pkg: Pkg, newPath: String, after: SlideRef?) {
+        val pres = pkg.doc("ppt/presentation.xml")!!
+        val presRels = pkg.doc(relsPath("ppt/presentation.xml"))!!
+        addOverride(pkg, "/$newPath", SLIDE_CT)
+        val rid = addRel(pkg, "ppt/presentation.xml", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide", newPath.removePrefix("ppt/"))
+        @Suppress("UNUSED_VARIABLE") val unused = presRels
+        ensureNs(pres.documentElement, "xmlns:r" to R_NS)
+        val list = slides(pkg)
+        var maxId = 255L
+        list.forEach { it.sldId.getAttribute("id").toLongOrNull()?.let { v -> if (v > maxId) maxId = v } }
+        val el = pres.createElement("p:sldId")
+        el.setAttribute("id", (maxId + 1).toString())
+        el.setAttribute("r:id", rid)
+        val lst = pres.getElementsByTagName("p:sldIdLst").item(0) as? Element ?: pres.createElement("p:sldIdLst").also { l ->
+            val anchor = pres.documentElement.child("p:notesMasterIdLst") ?: pres.documentElement.child("p:sldMasterIdLst")
+            if (anchor != null) insertAfter(anchor, l) else pres.documentElement.insertBefore(l, pres.documentElement.firstChild)
+        }
+        if (after != null) insertAfter(after.sldId, el) else lst.appendChild(el)
+        val sec = pres.getElementsByTagName("p14:sldId")
+        if (after != null) for (i in 0 until sec.length) {
+            val e = sec.item(i) as Element
+            if (e.getAttribute("id") == after.sldId.getAttribute("id")) { insertAfter(e, (e.cloneNode(false) as Element).also { it.setAttribute("id", (maxId + 1).toString()) }); break }
+        } else if (sec.length > 0) {
+            val last = sec.item(sec.length - 1) as Element
+            insertAfter(last, (last.cloneNode(false) as Element).also { it.setAttribute("id", (maxId + 1).toString()) })
+        }
+    }
+
+    private fun newSlidePath(pkg: Pkg): String {
+        val n = (pkg.files.keys.mapNotNull { Regex("ppt/slides/slide(\\d+)\\.xml").matchEntire(it)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        return "ppt/slides/slide$n.xml"
+    }
+
+    /** Tanlangan maket asosida yangi slayd (joy egalari bilan) — [after] dan keyin. */
+    fun addSlide(bytes: ByteArray, after: Int, layoutIndex: Int): ByteArray {
+        val pkg = Pkg(readZip(bytes))
+        val lays = layouts(pkg)
+        val lay = lays.getOrNull(layoutIndex) ?: lays.firstOrNull() ?: return bytes
+        val ld = pkg.doc(lay.path) ?: return bytes
+        val sb = StringBuilder()
+        var id = 2
+        val sps = ld.getElementsByTagName("p:sp")
+        for (i in 0 until sps.length) {
+            val sp = sps.item(i) as Element
+            val ph = sp.getElementsByTagName("p:ph").item(0) as? Element ?: continue
+            val type = ph.getAttribute("type")
+            if (type in setOf("dt", "ftr", "sldNum", "pic", "chart", "tbl", "dgm", "media", "clipArt")) continue
+            val attrs = listOf("type", "orient", "sz", "idx").filter { ph.hasAttribute(it) }.joinToString("") { " $it=\"${ph.getAttribute(it)}\"" }
+            sb.append("""<p:sp><p:nvSpPr><p:cNvPr id="$id" name="Placeholder $id"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph$attrs/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ru-RU" dirty="0"/></a:p></p:txBody></p:sp>""")
+            id++
+        }
+        val path = newSlidePath(pkg)
+        pkg.files[path] = ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n" +
+            """<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="$R_NS" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>$sb</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>""").toByteArray()
+        addRel(pkg, path, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout", "../slideLayouts/" + lay.path.substringAfterLast('/'))
+        registerSlide(pkg, path, slides(pkg).getOrNull(after))
+        return pkg.bytes()
+    }
+
+    /** Slaydni [delta] pozitsiyaga suradi (-1 — yuqoriga, +1 — pastga). */
+    fun moveSlide(bytes: ByteArray, index: Int, delta: Int): ByteArray {
+        val pkg = Pkg(readZip(bytes))
+        val list = slides(pkg)
+        val src = list.getOrNull(index) ?: return bytes
+        val dst = list.getOrNull(index + delta) ?: return bytes
+        val parent = src.sldId.parentNode
+        parent.removeChild(src.sldId)
+        if (delta < 0) parent.insertBefore(src.sldId, dst.sldId) else insertAfter(dst.sldId, src.sldId)
+        // bo'limlar ro'yxatida ham shu tartib
+        val pres = pkg.doc("ppt/presentation.xml")!!
+        val sec = pres.getElementsByTagName("p14:sldId")
+        var a: Element? = null; var b: Element? = null
+        for (i in 0 until sec.length) {
+            val e = sec.item(i) as Element
+            if (e.getAttribute("id") == src.sldId.getAttribute("id")) a = e
+            if (e.getAttribute("id") == dst.sldId.getAttribute("id")) b = e
+        }
+        if (a != null && b != null) {
+            a.parentNode.removeChild(a)
+            if (delta < 0) b.parentNode.insertBefore(a, b) else insertAfter(b, a)
+        }
+        return pkg.bytes()
+    }
+
+    /** Slayd maketini almashtiradi (joy egalari yangi maketdagi joylashuvni oladi). */
+    fun setSlideLayout(bytes: ByteArray, index: Int, layoutIndex: Int): ByteArray {
+        val pkg = Pkg(readZip(bytes))
+        val s = slides(pkg).getOrNull(index) ?: return bytes
+        val lay = layouts(pkg).getOrNull(layoutIndex) ?: return bytes
+        val rd = pkg.doc(relsPath(s.path)) ?: return bytes
+        val nl = rd.getElementsByTagName("Relationship")
+        for (i in 0 until nl.length) {
+            val e = nl.item(i) as Element
+            if (e.getAttribute("Type").endsWith("/slideLayout")) e.setAttribute("Target", "../slideLayouts/" + lay.path.substringAfterLast('/'))
+        }
+        return pkg.bytes()
+    }
+
+    /** Slayd fon rangi ([all] — barcha slaydlarga). */
+    fun setSlideBackground(bytes: ByteArray, index: Int, hex: String, all: Boolean): ByteArray {
+        val pkg = Pkg(readZip(bytes))
+        val list = slides(pkg)
+        val targets = if (all) list else listOfNotNull(list.getOrNull(index))
+        val color = hex.removePrefix("#").uppercase().takeIf { it.matches(Regex("[0-9A-F]{6}")) } ?: return bytes
+        for (s in targets) {
+            val d = pkg.doc(s.path) ?: continue
+            val cSld = d.getElementsByTagName("p:cSld").item(0) as? Element ?: continue
+            cSld.kids().filter { it.tagName == "p:bg" }.forEach { cSld.removeChild(it) }
+            cSld.insertBefore(fragment(d, """<p:bg><p:bgPr><a:solidFill><a:srgbClr val="$color"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>"""), cSld.firstChild)
+        }
+        return pkg.bytes()
     }
 
     private const val SLIDE_CT = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"

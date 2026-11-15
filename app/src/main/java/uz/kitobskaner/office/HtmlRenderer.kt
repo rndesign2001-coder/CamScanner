@@ -1336,6 +1336,11 @@ body.mobile #outline{display:block;padding:6px 4px}
 .on{font:700 12px sans-serif;color:#1E6BFF}
 .qx{display:none;position:fixed;top:10px;right:10px;z-index:300;width:42px;height:42px;border-radius:21px;border:0;background:rgba(255,255,255,.18);color:#fff;font:600 20px sans-serif}
 body.show .qx{display:block}
+.bar button.tb{position:relative;padding:3px;min-width:0;height:auto;background:#2c3040}
+.th{position:relative;width:104px;overflow:hidden;border-radius:4px;background:#fff}
+.bar button.tb span{position:absolute;left:5px;bottom:4px;font:600 10px sans-serif;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:0 5px}
+body.editing .sp.phe{outline:1px dashed #9aa3b5}
+@media print{@page{size:A4 landscape;margin:0}body{padding:0;background:#fff}.slide-wrap{page-break-after:always;break-after:page;margin:0 auto!important;border-radius:0;box-shadow:none!important}.no,.qx,#outline{display:none!important}}
 """
         val script = """
 var cur=0,n=$n;
@@ -1348,8 +1353,19 @@ function stop(){document.body.classList.remove('show');fit();go(cur)}
 var sx=0;document.addEventListener('touchstart',function(e){sx=e.touches[0].clientX},{passive:true});
 document.addEventListener('touchend',function(e){if(!document.body.classList.contains('show'))return;var dx=e.changedTouches[0].clientX-sx;
 if(dx<-40)go(cur+1);else if(dx>40)go(cur-1);else if(e.changedTouches[0].clientX>window.innerWidth/2)go(cur+1);else go(cur-1)});
-window.addEventListener('resize',fit);fit();"""
-        val bar = "<div class=\"bar\"><button class=\"play\" onclick=\"play()\">▶</button>$thumbs</div><button class=\"qx\" onclick=\"stop()\">✕</button>"
+window.addEventListener('resize',fit);fit();
+function thumbs(){var w=document.querySelectorAll('.slide-wrap'),b=document.querySelectorAll('.bar button.tb');if(w.length>80)return;
+for(var i=0;i<w.length&&i<b.length;i++){var s=w[i].querySelector('.slide'),c=s.cloneNode(true),k=104/s.offsetWidth;
+c.removeAttribute('id');c.style.transform='scale('+k+')';c.style.position='absolute';c.style.left='0';c.style.top='0';c.style.pointerEvents='none';
+var x=c.querySelectorAll('[data-p],[data-r],[data-s],[contenteditable]');for(var j=0;j<x.length;j++){x[j].removeAttribute('data-p');x[j].removeAttribute('data-r');x[j].removeAttribute('data-s');x[j].removeAttribute('contenteditable')}
+var box=document.createElement('div');box.className='th';box.style.height=(s.offsetHeight*k)+'px';box.appendChild(c);
+var n=document.createElement('span');n.textContent=i+1;b[i].textContent='';b[i].appendChild(box);b[i].appendChild(n)}}
+setTimeout(thumbs,60);
+var pw=0;function pre(){var w=document.querySelectorAll('.slide-wrap');for(var i=0;i<w.length;i++){w[i].style.width='1040px'}fit()}
+function post(){var w=document.querySelectorAll('.slide-wrap');for(var i=0;i<w.length;i++){w[i].style.width=''}fit()}
+window.addEventListener('beforeprint',pre);window.addEventListener('afterprint',post);
+if(window.matchMedia)window.matchMedia('print').addListener(function(m){if(m.matches)pre();else post()});"""
+        val bar = "<div class=\"bar\"><button class=\"play\" onclick=\"play()\">▶</button>${thumbs.replace("<button onclick", "<button class=\"tb\" onclick")}</div><button class=\"qx\" onclick=\"stop()\">✕</button>"
         return page(title, css, body + bar + "<div id=\"outline\"></div>", script, "pptx")
     }
 
@@ -1694,7 +1710,8 @@ window.addEventListener('resize',fit);fit();"""
         val img = imgFill?.let { image(ctx.files, ctx.rels[it]) }?.let { "<img src=\"$it\" style=\"position:absolute;inset:0\">" } ?: ""
         if (img.isEmpty() && text.isEmpty() && bgColor == null && grad == null && line == null) return ""
         val sa = sid?.let { " data-s=\"$it\"" } ?: ""
-        return "<div class=\"sp\"$sa style=\"$st\">$img$text</div>"
+        val phe = if (ph != null && paras.all { it.runs.isEmpty() }) " phe" else ""
+        return "<div class=\"sp$phe\"$sa style=\"$st\">$img$text</div>"
     }
 
     private class PptRun(val text: String, val css: String, val size: Float, val br: Boolean = false, val id: String? = null, val obj: Boolean = false)

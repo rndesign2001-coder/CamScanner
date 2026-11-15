@@ -178,6 +178,7 @@ fun MainScreen(
         Tool(R.drawable.ic3d_ocr, R.string.tool_pdf_ocr, R.string.tool_pdf_ocr_sub, 0) { openPdf() },
         Tool(R.drawable.ic3d_word, R.string.new_word, R.string.new_word_sub, 1) { onNewDoc("docx") },
         Tool(R.drawable.ic3d_excel, R.string.new_excel, R.string.new_excel_sub, 1) { onNewDoc("xlsx") },
+        Tool(R.drawable.ic3d_ppt, R.string.new_ppt, R.string.new_ppt_sub, 1) { onNewDoc("pptx") },
         Tool(R.drawable.ic3d_folder, R.string.tool_open_doc, R.string.tool_open_doc_sub, 1) { openDoc() },
         Tool(R.drawable.ic3d_sign, R.string.tool_sign, R.string.tool_sign_sub, 1, onSign),
         Tool(R.drawable.ic3d_merge, R.string.tool_merge, R.string.tool_merge_sub, 1) { onPdfOp("merge") },
