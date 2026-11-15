@@ -34,8 +34,8 @@ class PaletteSpec(val primary: Color, val secondary: Color, val tertiary: Color,
 fun spec(p: Palette): PaletteSpec = when (p) {
     // QulayOfis brendi: logotipdagi yorqin ko'k + yashil
     Palette.INDIGO, Palette.DYNAMIC -> PaletteSpec(
-        Color(0xFF1E6BFF), Color(0xFF16C784), Color(0xFFFFB020),
-        listOf(Color(0xFF1E6BFF), Color(0xFF00B4FF), Color(0xFF16C784))
+        Color(0xFF2563EB), Color(0xFF16A36A), Color(0xFFF59E0B),
+        listOf(Color(0xFF2563EB), Color(0xFF2563EB), Color(0xFF3B82F6))
     )
     Palette.OCEAN -> PaletteSpec(
         Color(0xFF0284C7), Color(0xFF14B8A6), Color(0xFFF97316),
@@ -75,19 +75,19 @@ private fun lightScheme(s: PaletteSpec): ColorScheme = lightColorScheme(
     tertiaryContainer = lerp(s.tertiary, White, 0.82f),
     onTertiaryContainer = lerp(s.tertiary, Color.Black, 0.62f),
     background = Color.Transparent,
-    onBackground = Color(0xFF14142B),
+    onBackground = Color(0xFF17191F),
     surface = White,
-    onSurface = Color(0xFF14142B),
-    surfaceVariant = lerp(s.primary, White, 0.92f),
-    onSurfaceVariant = Color(0xFF54566F),
+    onSurface = Color(0xFF17191F),
+    surfaceVariant = Color(0xFFF1F3F6),
+    onSurfaceVariant = Color(0xFF858B98),
     surfaceContainerLowest = lerp(s.primary, White, 0.97f),
     surfaceContainerLow = lerp(s.primary, White, 0.975f),
     surfaceContainer = lerp(s.primary, White, 0.95f),
     surfaceContainerHigh = lerp(s.primary, White, 0.92f),
     surfaceContainerHighest = lerp(s.primary, White, 0.89f),
-    outline = lerp(s.primary, Color(0xFFB0B3C6), 0.8f),
-    outlineVariant = lerp(s.primary, Color(0xFFE2E3EE), 0.9f),
-    error = Color(0xFFDC2626),
+    outline = Color(0xFFC9CED8),
+    outlineVariant = Color(0xFFE9ECF1),
+    error = Color(0xFFE5484D),
 )
 
 private fun darkScheme(s: PaletteSpec): ColorScheme {
@@ -105,27 +105,27 @@ private fun darkScheme(s: PaletteSpec): ColorScheme {
         tertiaryContainer = lerp(s.tertiary, Night, 0.6f),
         onTertiaryContainer = lerp(s.tertiary, White, 0.85f),
         background = Color.Transparent,
-        onBackground = Color(0xFFF1F4FF),
-        surface = Color(0xFF17203A),
-        onSurface = Color(0xFFF1F4FF),
-        surfaceVariant = Color(0xFF222C4A),
-        onSurfaceVariant = Color(0xFFB9BBD3),
+        onBackground = Color(0xFFF2F3F5),
+        surface = Color(0xFF1A1C21),
+        onSurface = Color(0xFFF2F3F5),
+        surfaceVariant = Color(0xFF23262D),
+        onSurfaceVariant = Color(0xFF8E94A1),
         surfaceContainerLowest = Color(0xFF15161F),
         surfaceContainerLow = lerp(s.primary, Night, 0.9f),
         surfaceContainer = lerp(s.primary, Night, 0.86f),
         surfaceContainerHigh = lerp(s.primary, Night, 0.82f),
         surfaceContainerHighest = lerp(s.primary, Night, 0.78f),
-        outline = lerp(s.primary, Color(0xFF4A4C66), 0.8f),
-        outlineVariant = lerp(s.primary, Color(0xFF2E3046), 0.85f),
-        error = Color(0xFFF87171),
+        outline = Color(0xFF3A3E48),
+        outlineVariant = Color(0xFF2A2D35),
+        error = Color(0xFFFF6369),
     )
 }
 
 private val AppTypography = Typography().let { t ->
     t.copy(
-        displaySmall = t.displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp),
-        headlineLarge = t.headlineLarge.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp),
-        headlineMedium = t.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp),
+        displaySmall = t.displaySmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp),
+        headlineLarge = t.headlineLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+        headlineMedium = t.headlineMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp),
         headlineSmall = t.headlineSmall.copy(fontWeight = FontWeight.Bold),
         titleLarge = t.titleLarge.copy(fontWeight = FontWeight.Bold),
         titleMedium = t.titleMedium.copy(fontWeight = FontWeight.SemiBold),
@@ -135,10 +135,10 @@ private val AppTypography = Typography().let { t ->
 
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(36.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(24.dp),
 )
 
 class Brand(val gradient: Brush, val colors: List<Color>, val isDark: Boolean, val base: Color = Color.White)
@@ -166,7 +166,7 @@ fun KitobTheme(mode: ThemeMode, palette: Palette, content: @Composable () -> Uni
     val gradColors = if (palette == Palette.DYNAMIC && Build.VERSION.SDK_INT >= 31) {
         listOf(scheme.primary, lerp(scheme.primary, scheme.tertiary, 0.5f), scheme.tertiary)
     } else if (dark) s.gradient.map { lerp(it, Night, 0.18f) } else s.gradient
-    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark, if (dark) Color(0xFF0B1226) else lerp(scheme.primary, Color(0xFFF4F5F9), 0.95f))) {
+    CompositionLocalProvider(LocalBrand provides Brand(Brush.linearGradient(gradColors), gradColors, dark, if (dark) Color(0xFF0E0F12) else Color(0xFFF7F8FA))) {
         MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes) {
             // matn rangi butun ilova bo'ylab mavzuga mos (tungi rejimda qora matn bo'lmasin)
             CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides scheme.onBackground) {

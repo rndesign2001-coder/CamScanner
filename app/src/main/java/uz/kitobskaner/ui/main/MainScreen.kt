@@ -1,5 +1,18 @@
 package uz.kitobskaner.ui.main
 
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.DocumentScanner
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.fillMaxHeight
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -25,7 +38,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,8 +58,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -196,12 +206,15 @@ fun MainScreen(
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(targetState = tab, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "tab") { t ->
             when (t) {
-                0 -> HomeTab(tools, onScan = { showSource = true }, onSettings = onSettings, onOpenProject = onOpenProject, onOpenFile = onOpenFile)
-                1 -> ToolsTab(tools)
-                else -> FilesTab(onOpenFile, openDoc)
+                0 -> HomeTab(
+                    onScan = { showSource = true }, onSettings = onSettings, onOpenProject = onOpenProject, onOpenDoc = onOpenDoc,
+                    onNewDoc = onNewDoc, onPdfOp = onPdfOp, onAllFiles = { tab = 1 },
+                )
+                1 -> uz.kitobskaner.ui.files.FilesScreen(onOpen = onOpenDoc)
+                else -> ToolsTab(tools)
             }
         }
-        FloatingBar(tab, onTab = { tab = it }, onScan = { showSource = true }, modifier = Modifier.align(Alignment.BottomCenter))
+        TabBar(tab, onTab = { tab = it }, onScan = { showSource = true }, onSettings = onSettings, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     if (showSource) SourceSheet(source, onDismiss = { showSource = false }, onPdf = openPdf, onBookCam = onBookCam)
@@ -224,234 +237,154 @@ fun MainScreen(
     }
 }
 
-// ---------------------------------------------------------------- pastki suzuvchi panel
+// ---------------------------------------------------------------- pastki panel (iOS tab bar)
 
 @Composable
-private fun FloatingBar(tab: Int, onTab: (Int) -> Unit, onScan: () -> Unit, modifier: Modifier) {
+private fun TabBar(tab: Int, onTab: (Int) -> Unit, onScan: () -> Unit, onSettings: () -> Unit, modifier: Modifier) {
     val brand = LocalBrand.current
-    Row(
-        modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BoxWithConstraints(
-            Modifier
-                .weight(1f)
-                .height(68.dp)
-                .glass(RoundedCornerShape(34.dp), brand.isDark, elevation = 18.dp, tint = if (brand.isDark) Color(0xFF9FA4FF) else Color.White)
-        ) {
-            val itemW = maxWidth / 3
-            val x by animateDpAsState(itemW * tab, spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow), label = "pill")
-            // tanlangan bo'lim ostidagi "suyuq" belgi
-            Box(
-                Modifier
-                    .offset(x = x)
-                    .width(itemW)
-                    .fillMaxHeight()
-                    .padding(6.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Brush.verticalGradient(listOf(brand.colors.first().copy(alpha = 0.22f), brand.colors.last().copy(alpha = 0.12f))))
-                    .border(1.dp, Color.White.copy(alpha = if (brand.isDark) 0.18f else 0.8f), RoundedCornerShape(28.dp))
-            )
-            Row(Modifier.fillMaxSize()) {
-                BarItem(R.drawable.ic3d_home, stringResource(R.string.tab_home), tab == 0, Modifier.weight(1f)) { onTab(0) }
-                BarItem(R.drawable.ic3d_tools, stringResource(R.string.tab_tools), tab == 1, Modifier.weight(1f)) { onTab(1) }
-                BarItem(R.drawable.ic3d_files, stringResource(R.string.tab_files), tab == 2, Modifier.weight(1f)) { onTab(2) }
+    Column(modifier.fillMaxWidth().background(if (brand.isDark) Color(0xF21A1C21) else Color(0xF7FFFFFF))) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
+        Row(Modifier.navigationBarsPadding().height(62.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            TabItem(Icons.Rounded.Home, stringResource(R.string.tab_home), tab == 0, Modifier.weight(1f)) { onTab(0) }
+            TabItem(Icons.Rounded.Folder, stringResource(R.string.tab_files), tab == 1, Modifier.weight(1f)) { onTab(1) }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .size(50.dp)
+                        .shadow(6.dp, CircleShape, spotColor = MaterialTheme.colorScheme.primary)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable(onClick = onScan),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Rounded.DocumentScanner, stringResource(R.string.tool_scan), tint = Color.White) }
             }
-        }
-        Spacer(Modifier.width(12.dp))
-        // skaner tugmasi
-        Box(
-            Modifier
-                .size(68.dp)
-                .shadow(18.dp, CircleShape, spotColor = brand.colors.first())
-                .clip(CircleShape)
-                .background(brand.gradient)
-                .border(1.5.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.1f))), CircleShape)
-                .clickable(onClick = onScan),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent), endY = 90f))
-            )
-            Icon3D(R.drawable.ic3d_scan, 40.dp)
+            TabItem(Icons.Rounded.GridView, stringResource(R.string.tab_tools), tab == 2, Modifier.weight(1f)) { onTab(2) }
+            TabItem(Icons.Rounded.Settings, stringResource(R.string.settings), false, Modifier.weight(1f), onSettings)
         }
     }
 }
 
 @Composable
-private fun BarItem(icon: Int, label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val s by animateFloatAsState(if (selected) 1.12f else 0.9f, spring(Spring.DampingRatioMediumBouncy), label = "s")
+private fun TabItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val c = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
-        modifier
-            .fillMaxHeight()
-            .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        modifier.fillMaxHeight().clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Icon3D(icon, 30.dp, Modifier.scale(s))
-        Text(
-            label, style = MaterialTheme.typography.labelSmall, maxLines = 1,
-            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
-            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Icon(icon, null, tint = c, modifier = Modifier.size(24.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = c, maxLines = 1, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
 
 // ---------------------------------------------------------------- Asosiy
 
-@Composable
-private fun greeting(): String {
-    val h = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    return stringResource(
-        when (h) {
-            in 5..10 -> R.string.greet_morning
-            in 11..17 -> R.string.greet_day
-            else -> R.string.greet_evening
-        }
-    )
+private class DocEntry(val uri: android.net.Uri, val name: String, val time: Long, val size: Long, val fav: Boolean)
+
+private val categories = listOf(
+    R.string.cat_all to emptySet(),
+    R.string.cat_word to setOf("doc", "docx", "docm", "dotx", "rtf", "odt", "txt"),
+    R.string.cat_excel to setOf("xls", "xlsx", "xlsm", "csv", "ods"),
+    R.string.cat_ppt to setOf("ppt", "pptx", "ppsx", "pps", "odp"),
+    R.string.cat_pdf to setOf("pdf"),
+    R.string.cat_images to setOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic"),
+    R.string.cat_other to setOf("*"),
+)
+private val knownExt = categories.flatMap { it.second }.toSet() - "*"
+
+private fun inCategory(name: String, cat: Int): Boolean {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val set = categories[cat].second
+    return when {
+        set.isEmpty() -> true
+        set.contains("*") -> ext !in knownExt
+        else -> ext in set
+    }
 }
 
 @Composable
 private fun HomeTab(
-    tools: List<Tool>,
     onScan: () -> Unit,
     onSettings: () -> Unit,
     onOpenProject: (String) -> Unit,
-    onOpenFile: (File) -> Unit,
+    onOpenDoc: (android.net.Uri) -> Unit,
+    onNewDoc: (String) -> Unit,
+    onPdfOp: (String) -> Unit,
+    onAllFiles: () -> Unit,
 ) {
     val app = App.instance
     val repo = app.repository
+    val context = LocalContext.current
     val projects by repo.projects.collectAsState()
     val files by app.exporter.files.collectAsState()
+    val recents by app.recents.recent.collectAsState()
     val scope = rememberCoroutineScope()
-    val brand = LocalBrand.current
     var renameTarget by remember { mutableStateOf<Project?>(null) }
     var deleteTarget by remember { mutableStateOf<Project?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var cat by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { app.exporter.refreshFiles() }
+
+    // oxirgi ochilganlar + ilova hujjatlari (takrorlanmasdan)
+    val entries = remember(files, recents) {
+        val seen = HashSet<String>()
+        val list = ArrayList<DocEntry>()
+        recents.filter { it.time > 0 }.forEach { r -> if (seen.add(r.uri)) list += DocEntry(android.net.Uri.parse(r.uri), r.name, r.time, r.size, r.fav) }
+        files.forEach { f -> val u = android.net.Uri.fromFile(f); if (seen.add(u.toString())) list += DocEntry(u, f.name, f.lastModified(), f.length(), false) }
+        list.sortedByDescending { it.time }
+    }
+    val shown = entries.filter { inCategory(it.name, cat) && (query.isBlank() || it.name.contains(query.trim(), true)) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 120.dp),
+        contentPadding = PaddingValues(bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Row(
-                Modifier
-                    .statusBarsPadding()
-                    .padding(start = 20.dp, end = 14.dp, top = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Image(
-                    painterResource(R.drawable.logo), null,
-                    Modifier
-                        .size(46.dp)
-                        .shadow(8.dp, RoundedCornerShape(15.dp))
-                        .clip(RoundedCornerShape(15.dp)),
-                    contentScale = ContentScale.Crop,
-                )
+            Row(Modifier.statusBarsPadding().padding(start = 20.dp, end = 12.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(R.drawable.logo), null, Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)), contentScale = ContentScale.Crop)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(greeting(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(greeting(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .glass(CircleShape, brand.isDark, 6.dp)
-                        .clickable(onClick = onSettings),
-                    contentAlignment = Alignment.Center
-                ) { Icon3D(R.drawable.ic3d_settings, 28.dp) }
+                IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, stringResource(R.string.settings), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
-        // bosh karta
         item {
-            Box(
-                Modifier
-                    .padding(horizontal = 16.dp)
-                    .fillMaxWidth()
-                    .shadow(22.dp, RoundedCornerShape(36.dp), spotColor = brand.colors.first())
-                    .clip(RoundedCornerShape(36.dp))
-                    .background(brand.gradient)
-                    .border(1.5.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.7f), Color.White.copy(alpha = 0.05f))), RoundedCornerShape(36.dp))
-            ) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 50.dp, y = (-60).dp)
-                        .size(220.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.12f))
-                )
-                Icon3D(
-                    R.drawable.ic3d_books, 132.dp,
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 10.dp, y = 6.dp)
-                        .rotate(8f)
-                )
-                Column(Modifier.padding(22.dp)) {
-                    Text(
-                        stringResource(R.string.hero_title), color = Color.White,
-                        style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier.fillMaxWidth(0.68f)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        stringResource(R.string.hero_subtitle), color = Color.White.copy(alpha = 0.9f),
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth(0.7f)
-                    )
-                    Spacer(Modifier.height(18.dp))
-                    Box(
-                        Modifier
-                            .shadow(10.dp, RoundedCornerShape(22.dp))
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(Brush.verticalGradient(listOf(Color.White, Color.White.copy(alpha = 0.86f))))
-                            .clickable(onClick = onScan)
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon3D(R.drawable.ic3d_scan, 30.dp)
-                            Spacer(Modifier.width(10.dp))
-                            Text(stringResource(R.string.scan_now), color = brand.colors.first(), fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
-                        }
-                    }
-                }
-            }
+            androidx.compose.material3.TextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text(stringResource(R.string.search_documents)) },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, null) } },
+                shape = RoundedCornerShape(12.dp),
+                colors = androidx.compose.material3.TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            )
         }
-        // tezkor amallar
-        item {
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(tools.filter { it.icon != R.drawable.ic3d_scan }.take(8)) { t ->
-                    GlassCard(modifier = Modifier.size(width = 104.dp, height = 116.dp), shape = RoundedCornerShape(28.dp), onClick = t.action) {
-                        Column(
-                            Modifier
-                                .fillMaxSize()
-                                .padding(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon3D(t.icon, 52.dp)
-                            Spacer(Modifier.height(8.dp))
-                            Text(stringResource(t.title), style = MaterialTheme.typography.labelMedium, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            }
-        }
-        if (files.isNotEmpty()) {
-            item { Header(stringResource(R.string.recent_files)) }
+        if (query.isBlank()) {
+            item { SectionTitle(stringResource(R.string.create_new)) }
             item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(files.take(10), key = { it.absolutePath }) { f ->
-                        GlassCard(modifier = Modifier.width(220.dp), shape = RoundedCornerShape(24.dp), onClick = { onOpenFile(f) }) {
-                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                FileTypeIcon(f, 44.dp)
-                                Spacer(Modifier.width(10.dp))
-                                Column {
-                                    Text(f.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(formatSize(f.length()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val actions = listOf(
+                    Triple(R.drawable.ic3d_word, R.string.q_word) { onNewDoc("docx") },
+                    Triple(R.drawable.ic3d_excel, R.string.q_excel) { onNewDoc("xlsx") },
+                    Triple(R.drawable.ic3d_ppt, R.string.q_ppt) { onNewDoc("pptx") },
+                    Triple(R.drawable.ic3d_pdf, R.string.q_pdf) { onPdfOp("convert") },
+                    Triple(R.drawable.ic3d_scan, R.string.q_scan, onScan),
+                    Triple(R.drawable.ic3d_gallery, R.string.q_images_pdf) { onPdfOp("images") },
+                )
+                Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    actions.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { (icon, label, act) ->
+                                GlassCard(Modifier.weight(1f).height(92.dp), onClick = act) {
+                                    Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                        Icon3D(icon, 36.dp)
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(stringResource(label), style = MaterialTheme.typography.labelMedium, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+                                    }
                                 }
                             }
                         }
@@ -459,10 +392,44 @@ private fun HomeTab(
                 }
             }
         }
-        item { Header(stringResource(R.string.my_books), if (projects.isNotEmpty()) projects.size.toString() else null) }
-        if (projects.isEmpty()) item { Empty(R.drawable.ic3d_book, stringResource(R.string.no_books), stringResource(R.string.no_books_hint)) }
-        items(projects, key = { it.id }) { p ->
-            ProjectCard(p, onClick = { onOpenProject(p.id) }, onRename = { renameTarget = p }, onDelete = { deleteTarget = p })
+        item {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(categories.size) { i ->
+                    val on = cat == i
+                    Text(
+                        stringResource(categories[i].first),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
+                            .border(1.dp, if (on) Color.Transparent else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
+                            .clickable { cat = i }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+        item {
+            Row(Modifier.padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(if (query.isBlank()) R.string.recent_documents else R.string.search_results), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                TextButton(onClick = onAllFiles) { Text(stringResource(R.string.see_all)) }
+            }
+        }
+        if (shown.isEmpty()) item {
+            Text(
+                stringResource(R.string.no_recent_docs), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+        }
+        items(shown.take(30), key = { "d" + it.uri }) { e -> DocRow(e, onOpenDoc) }
+        if (query.isBlank()) {
+            item { StorageCard() }
+            item { SectionTitle(stringResource(R.string.my_books), if (projects.isNotEmpty()) projects.size.toString() else null) }
+            if (projects.isEmpty()) item { Empty(R.drawable.ic3d_book, stringResource(R.string.no_books), stringResource(R.string.no_books_hint)) }
+            items(projects, key = { it.id }) { p ->
+                ProjectCard(p, onClick = { onOpenProject(p.id) }, onRename = { renameTarget = p }, onDelete = { deleteTarget = p })
+            }
         }
     }
 
@@ -478,6 +445,131 @@ private fun HomeTab(
             stringResource(R.string.delete), destructive = true, onDismiss = { deleteTarget = null }
         ) { scope.launch { repo.delete(p.id) } }
     }
+    @Suppress("UNUSED_VARIABLE") val c = context
+}
+
+@Composable
+private fun SectionTitle(title: String, badge: String? = null) {
+    Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        if (badge != null) Text(badge, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private val thumbCache = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(40)
+
+@Composable
+private fun DocThumb(uri: android.net.Uri, name: String) {
+    val context = LocalContext.current
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val key = uri.toString()
+    var bmp by remember(key) { mutableStateOf(thumbCache.get(key)) }
+    Box(
+        Modifier.size(width = 42.dp, height = 54.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            ext in setOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic") ->
+                coil.compose.AsyncImage(uri, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            ext == "pdf" -> {
+                LaunchedEffect(key) {
+                    if (bmp == null) bmp = withContext(Dispatchers.IO) {
+                        try {
+                            context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
+                                android.graphics.pdf.PdfRenderer(fd).use { r ->
+                                    r.openPage(0).use { p ->
+                                        val b = android.graphics.Bitmap.createBitmap(120, (120f * p.height / p.width).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+                                        b.eraseColor(android.graphics.Color.WHITE)
+                                        p.render(b, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                        b.asImageBitmap()
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) { null }
+                    }?.also { thumbCache.put(key, it) }
+                }
+                val b = bmp
+                if (b != null) Image(b, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                else uz.kitobskaner.ui.files.TypeIcon(name, 30.dp)
+            }
+            else -> uz.kitobskaner.ui.files.TypeIcon(name, 30.dp)
+        }
+    }
+}
+
+@Composable
+private fun DocRow(e: DocEntry, onOpen: (android.net.Uri) -> Unit) {
+    val app = App.instance
+    val context = LocalContext.current
+    var m by remember { mutableStateOf(false) }
+    val type = e.name.substringAfterLast('.', "").uppercase()
+    Box(Modifier.padding(horizontal = 16.dp)) {
+        GlassCard(Modifier.fillMaxWidth(), onClick = { onOpen(e.uri) }) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                DocThumb(e.uri, e.name)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(e.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOfNotNull(type.ifEmpty { null }, java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(e.time)),
+                            if (e.size > 0) formatSize(e.size) else null).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                    )
+                }
+                if (e.fav) Icon(Icons.Rounded.Star, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
+                IconButton(onClick = { m = true }) { Icon(Icons.Rounded.MoreVert, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+        DropdownMenu(expanded = m, onDismissRequest = { m = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.open)) }, onClick = { m = false; onOpen(e.uri) })
+            DropdownMenuItem(text = { Text(stringResource(if (e.fav) R.string.unfavorite else R.string.add_favorite)) }, onClick = { m = false; app.recents.setFav(e.uri, e.name, !e.fav) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = {
+                m = false
+                val i = android.content.Intent(android.content.Intent.ACTION_SEND).setType(uz.kitobskaner.pdf.mimeOf(File(e.name)))
+                    .putExtra(android.content.Intent.EXTRA_STREAM, if (e.uri.scheme == "file") androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", File(e.uri.path!!)) else e.uri)
+                    .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                try { context.startActivity(android.content.Intent.createChooser(i, e.name)) } catch (_: Exception) {}
+            })
+            DropdownMenuItem(text = { Text(stringResource(R.string.remove_from_list)) }, onClick = { m = false; app.recents.remove(e.uri.toString()) })
+        }
+    }
+}
+
+@Composable
+private fun StorageCard() {
+    val app = App.instance
+    val files by app.exporter.files.collectAsState()
+    val stat = remember { try { android.os.StatFs(app.filesDir.absolutePath) } catch (_: Exception) { null } }
+    val total = stat?.totalBytes ?: 0L
+    val free = stat?.availableBytes ?: 0L
+    val docs = files.sumOf { it.length() }
+    GlassCard(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.storage), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.storage_free, formatSize(free)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { if (total > 0) (1f - free.toFloat() / total).coerceIn(0f, 1f) else 0f },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+            Text(stringResource(R.string.storage_docs, files.size, formatSize(docs)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun greeting(): String {
+    val h = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+    return stringResource(
+        when (h) {
+            in 5..10 -> R.string.greet_morning
+            in 11..17 -> R.string.greet_day
+            else -> R.string.greet_evening
+        }
+    )
 }
 
 @Composable
@@ -550,96 +642,6 @@ private fun ToolsTab(tools: List<Tool>) {
     }
 }
 
-// ---------------------------------------------------------------- Fayllar
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun FilesTab(onOpenFile: (File) -> Unit, onOpenDoc: () -> Unit) {
-    val context = LocalContext.current
-    val exporter = App.instance.exporter
-    val files by exporter.files.collectAsState()
-    var query by remember { mutableStateOf("") }
-    var renameTarget by remember { mutableStateOf<File?>(null) }
-    var deleteTarget by remember { mutableStateOf<File?>(null) }
-    LaunchedEffect(Unit) { exporter.refreshFiles() }
-    val shown = remember(files, query) { if (query.isBlank()) files else files.filter { it.name.contains(query.trim(), true) } }
-
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item {
-            Column(
-                Modifier
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, start = 4.dp)
-            ) {
-                Text(stringResource(R.string.tab_files), style = MaterialTheme.typography.headlineMedium)
-                Text(stringResource(R.string.files_subtitle), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = query, onValueChange = { query = it }, singleLine = true,
-                    placeholder = { Text(stringResource(R.string.search_files)) },
-                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                    shape = RoundedCornerShape(22.dp),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(10.dp))
-                GlassCard(modifier = Modifier.size(56.dp), shape = RoundedCornerShape(20.dp), onClick = onOpenDoc) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon3D(R.drawable.ic3d_folder, 34.dp) }
-                }
-            }
-        }
-        if (shown.isEmpty()) item { Empty(R.drawable.ic3d_files, stringResource(R.string.no_files), stringResource(R.string.no_files_hint)) }
-        items(shown, key = { it.absolutePath }) { f ->
-            var menu by remember { mutableStateOf(false) }
-            GlassCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(onClick = { onOpenFile(f) }, onLongClick = { menu = true }),
-                shape = RoundedCornerShape(24.dp),
-            ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FileTypeIcon(f)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(f.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            formatSize(f.length()) + " • " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(f.lastModified())),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    IconButton(onClick = { shareFile(context, f, mimeOf(f)) }) { Icon(Icons.Rounded.Share, null) }
-                    Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, null) }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) },
-                                onClick = { menu = false; renameTarget = f })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, leadingIcon = { Icon(Icons.Rounded.Delete, null) },
-                                onClick = { menu = false; deleteTarget = f })
-                        }
-                    }
-                }
-            }
-        }
-    }
-    renameTarget?.let { f ->
-        RenameDialog(f.nameWithoutExtension, stringResource(R.string.file_name), onDismiss = { renameTarget = null }) {
-            exporter.rename(f, it); renameTarget = null
-        }
-    }
-    deleteTarget?.let { f ->
-        ConfirmDialog(stringResource(R.string.delete_q), f.name, stringResource(R.string.delete), true, onDismiss = { deleteTarget = null }) {
-            exporter.delete(f)
-        }
-    }
-}
-
-/** Fayl turi uchun 3D ikonka va yorliq. */
 @Composable
 fun FileTypeIcon(f: File, size: Dp = 48.dp) {
     val (icon, color, label) = when (f.extension.lowercase()) {

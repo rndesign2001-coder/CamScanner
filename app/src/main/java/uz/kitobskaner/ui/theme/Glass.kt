@@ -37,53 +37,26 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun GlassBackdrop(modifier: Modifier = Modifier) {
-    // Statik fon: bir marta chiziladi (avvalgi doimiy animatsiya har kadrda butun ekranni
-    // qayta chizib, ilovani sekinlashtirardi).
-    val brand = LocalBrand.current
-    val c = brand.colors
-    val alpha = if (brand.isDark) 0.30f else 0.16f
-    Box(
-        modifier
-            .fillMaxSize()
-            .background(brand.base)
-            .drawBehind {
-                val w = size.width
-                val h = size.height
-                val r = maxOf(w, h) * 0.6f
-                drawCircle(Brush.radialGradient(listOf(c.first().copy(alpha = alpha), Color.Transparent), Offset(w * 0.05f, 0f), r), r, Offset(w * 0.05f, 0f))
-                drawCircle(Brush.radialGradient(listOf(c.last().copy(alpha = alpha * 0.8f), Color.Transparent), Offset(w, h * 0.55f), r * 0.8f), r * 0.8f, Offset(w, h * 0.55f))
-            }
-    )
+    // tekis, sokin fon (iOS tizim foni)
+    Box(modifier.fillMaxSize().background(LocalBrand.current.base))
 }
 
-/** Shisha sirt: yarim shaffof to'ldirish, yuqoridan yorug' chegara va yumshoq soya. */
+/** iOS uslubidagi sirt: oq (tunda to'q) to'ldirish, ingichka chegara va juda yengil soya. */
 fun Modifier.glass(
-    shape: Shape = RoundedCornerShape(24.dp),
+    shape: Shape = RoundedCornerShape(16.dp),
     dark: Boolean,
-    elevation: Dp = 3.dp,
-    tint: Color = Color.White,
+    elevation: Dp = 1.dp,
+    @Suppress("UNUSED_PARAMETER") tint: Color = Color.White,
 ): Modifier = this
-    .shadow(elevation, shape, ambientColor = Color(0x33000000), spotColor = Color(0x22000000))
+    .shadow(elevation, shape, ambientColor = Color(0x14000000), spotColor = Color(0x14000000))
     .clip(shape)
-    .background(
-        Brush.verticalGradient(
-            if (dark) listOf(Color(0xFF1D2846), Color(0xFF16203A))
-            else listOf(tint.copy(alpha = 0.98f), tint.copy(alpha = 0.94f))
-        )
-    )
-    .border(
-        1.dp,
-        Brush.verticalGradient(
-            if (dark) listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.04f))
-            else listOf(Color(0x14000000), Color(0x0A000000))
-        ),
-        shape
-    )
+    .background(if (dark) Color(0xFF1A1C21) else Color.White)
+    .border(1.dp, if (dark) Color(0xFF2A2D35) else Color(0xFFE9ECF1), shape)
 
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(26.dp),
+    shape: Shape = RoundedCornerShape(16.dp),
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -92,7 +65,7 @@ fun GlassCard(
     val pressed by source.collectIsPressedAsState()
     Box(
         modifier
-            .scale(if (pressed) 0.97f else 1f)
+            .scale(if (pressed) 0.985f else 1f)
             .glass(shape, dark)
             .then(if (onClick != null) Modifier.clickable(source, null, onClick = onClick) else Modifier),
     ) {
@@ -114,26 +87,17 @@ fun GlassButton(
     val brand = LocalBrand.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    val shape = RoundedCornerShape(22.dp)
-    val bg = if (filled) Brush.linearGradient(brand.colors.map { if (enabled) it else lerp(it, Color.Gray, 0.7f) })
-    else Brush.verticalGradient(listOf(Color.White.copy(alpha = if (brand.isDark) 0.16f else 0.7f), Color.White.copy(alpha = if (brand.isDark) 0.06f else 0.35f)))
+    val shape = RoundedCornerShape(14.dp)
+    val primary = androidx.compose.material3.MaterialTheme.colorScheme.primary
     Box(
         modifier
-            .heightIn(min = 54.dp)
-            .scale(if (pressed) 0.96f else 1f)
-            .shadow(if (filled && enabled) 14.dp else 4.dp, shape, spotColor = brand.colors.first().copy(alpha = 0.6f))
+            .heightIn(min = 50.dp)
+            .scale(if (pressed) 0.98f else 1f)
             .clip(shape)
-            .background(bg)
-            // yuqori yarmidagi "shisha yaltirog'i"
-            .drawBehind {
-                drawRect(
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = if (filled) 0.35f else 0.25f), Color.Transparent),
-                        endY = size.height * 0.55f
-                    )
-                )
-            }
-            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.7f), Color.White.copy(alpha = 0.1f))), shape)
+            .background(
+                if (filled) (if (enabled) primary else primary.copy(alpha = 0.4f))
+                else if (brand.isDark) Color(0xFF23262D) else Color(0xFFEEF1F5)
+            )
             .clickable(source, null, enabled = enabled, onClick = onClick)
             .padding(horizontal = 18.dp),
         contentAlignment = Alignment.Center,

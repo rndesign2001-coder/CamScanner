@@ -298,13 +298,20 @@ fun DocumentScreen(
     }
 
     LaunchedEffect(uri) {
-        if (kind == Fmt.PDF) return@LaunchedEffect
+        if (kind == Fmt.PDF) {
+            withContext(Dispatchers.IO) { app.recents.opened(uri, name, uz.kitobskaner.pdf.PdfTools.size(context, uri)) }
+            return@LaunchedEffect
+        }
         try {
             // format fayl mazmunidan aniqlanadi (kengaytma noto'g'ri bo'lishi mumkin)
             val head = withContext(Dispatchers.IO) {
                 context.contentResolver.openInputStream(uri)?.use { s -> ByteArray(8192).let { b -> val n = s.read(b); if (n > 0) b.copyOf(n) else ByteArray(0) } }
             } ?: throw IllegalStateException("open")
-            if (FormatSniffer.detect(head, name, null) == Fmt.PDF) { kind = Fmt.PDF; loading = false; return@LaunchedEffect }
+            if (FormatSniffer.detect(head, name, null) == Fmt.PDF) {
+                kind = Fmt.PDF; loading = false
+                app.recents.opened(uri, name, uz.kitobskaner.pdf.PdfTools.size(context, uri))
+                return@LaunchedEffect
+            }
             val bytes = readOriginal()
             kind = withContext(Dispatchers.Default) { FormatSniffer.detect(bytes, name, context.contentResolver.getType(uri)) }
             if (kind == Fmt.PDF) { loading = false; return@LaunchedEffect }
@@ -316,6 +323,7 @@ fun DocumentScreen(
             }
             if (kind == Fmt.TXT || kind == Fmt.CSV) text = HtmlRenderer.decodeText(bytes)
             if (kind != Fmt.UNKNOWN && kind != Fmt.TXT) render(bytes)
+            app.recents.opened(uri, name, bytes.size.toLong())
         } catch (e: HtmlRenderer.EncryptedException) {
             error = errEnc
         } catch (e: TooLargeException) {
