@@ -54,7 +54,8 @@ import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.VerticalAlignTop
 import androidx.compose.material.icons.rounded.ViewColumn
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRightToPhotos
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AddToPhotos
 import androidx.compose.material.icons.rounded.Approval
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Compress
