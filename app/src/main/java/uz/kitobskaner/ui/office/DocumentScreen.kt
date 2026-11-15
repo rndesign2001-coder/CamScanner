@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -207,6 +209,8 @@ fun DocumentScreen(
     onSign: (Uri) -> Unit,
     onCompress: (String) -> Unit,
     startEditing: Boolean = false,
+    onPdfPages: (Uri) -> Unit = {},
+    onPdfAnnotate: (Uri) -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = App.instance
@@ -249,6 +253,11 @@ fun DocumentScreen(
     var rangeMode by remember { mutableStateOf(false) }
     var pendingSheet by remember { mutableIntStateOf(-1) }
     var layoutNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    val pdfList = androidx.compose.foundation.lazy.rememberLazyListState()
+    var pdfTexts by remember { mutableStateOf<List<String>?>(null) }
+    var pdfHits by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var hitIdx by remember { mutableIntStateOf(0) }
+    var pageText by remember { mutableStateOf<String?>(null) }
     val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
     val errEnc = stringResource(R.string.err_encrypted)
@@ -262,6 +271,7 @@ fun DocumentScreen(
     val needCursorMsg = stringResource(R.string.need_cursor)
     val replacedFmt = stringResource(R.string.replaced_n)
     val needCellMsg = stringResource(R.string.need_cell)
+    val copiedMsg = stringResource(R.string.copied)
     val lastSheetMsg = stringResource(R.string.last_sheet)
     val copiedFmt = stringResource(R.string.copied_n)
     val shownFmt = stringResource(R.string.shown_rows)
@@ -626,17 +636,54 @@ fun DocumentScreen(
                 actions = {
                     when {
                         kind == Fmt.PDF -> {
+                            IconButton(onClick = { searching = !searching; if (!searching) { pdfHits = emptyList(); query = "" } }) { Icon(Icons.Rounded.Search, null) }
                             IconButton(onClick = { onSign(uri) }) { Icon(Icons.Rounded.Approval, stringResource(R.string.sign_title)) }
-                            IconButton(onClick = {
-                                scope.launch {
-                                    val f = withContext(Dispatchers.IO) {
-                                        File(context.cacheDir, "open_$name").also { out ->
-                                            context.contentResolver.openInputStream(uri)?.use { i -> out.outputStream().use { i.copyTo(it) } }
-                                        }
-                                    }
-                                    onCompress(f.absolutePath)
+                            Box {
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
+                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.pdf_pages)) }, leadingIcon = { Icon(Icons.Rounded.Description, null) },
+                                        onClick = { menu = false; onPdfPages(uri) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.pdf_annotate)) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                                        onClick = { menu = false; onPdfAnnotate(uri) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.copy_page_text)) }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) },
+                                        onClick = {
+                                            menu = false
+                                            scope.launch {
+                                                busy = true
+                                                try { pdfTexts = pdfTexts ?: uz.kitobskaner.pdf.PdfEdit.pageTexts(context, uri) } catch (_: Throwable) { pdfTexts = emptyList() }
+                                                busy = false
+                                                pageText = pdfTexts?.getOrNull(pdfList.firstVisibleItemIndex)?.trim() ?: ""
+                                            }
+                                        })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.tool_compress)) }, leadingIcon = { Icon(Icons.Rounded.Compress, null) },
+                                        onClick = {
+                                            menu = false
+                                            scope.launch {
+                                                val f = withContext(Dispatchers.IO) {
+                                                    File(context.cacheDir, "open_$name").also { out ->
+                                                        context.contentResolver.openInputStream(uri)?.use { i -> out.outputStream().use { i.copyTo(it) } }
+                                                    }
+                                                }
+                                                onCompress(f.absolutePath)
+                                            }
+                                        })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.print_pdf)) }, leadingIcon = { Icon(Icons.Rounded.Print, null) },
+                                        onClick = { menu = false; printPdf(context, uri, name) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, leadingIcon = { Icon(Icons.Rounded.IosShare, null) },
+                                        onClick = {
+                                            menu = false
+                                            scope.launch {
+                                                val f = withContext(Dispatchers.IO) {
+                                                    File(context.cacheDir, "share/$name").also { out ->
+                                                        out.parentFile?.mkdirs()
+                                                        context.contentResolver.openInputStream(uri)?.use { i -> out.outputStream().use { i.copyTo(it) } }
+                                                    }
+                                                }
+                                                uz.kitobskaner.ui.components.shareFile(context, f, "application/pdf")
+                                            }
+                                        })
                                 }
-                            }) { Icon(Icons.Rounded.Compress, null) }
+                            }
                         }
                         editing -> {
                             IconButton(onClick = { startSave() }) {
@@ -707,7 +754,31 @@ fun DocumentScreen(
             when {
                 error != null -> Text(error!!, Modifier.align(Alignment.Center).padding(24.dp), textAlign = TextAlign.Center)
                 loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                kind == Fmt.PDF -> PdfViewer(uri)
+                kind == Fmt.PDF -> Column(Modifier.fillMaxSize()) {
+                    if (searching) {
+                        SearchBar(query, onQuery = { q ->
+                            query = q
+                            scope.launch {
+                                if (q.length < 2) { pdfHits = emptyList(); return@launch }
+                                if (pdfTexts == null) pdfTexts = try { uz.kitobskaner.pdf.PdfEdit.pageTexts(context, uri) } catch (_: Throwable) { emptyList() }
+                                if (query != q) return@launch
+                                pdfHits = pdfTexts!!.indices.filter { pdfTexts!![it].contains(q, ignoreCase = true) }
+                                hitIdx = 0
+                                pdfHits.firstOrNull()?.let { pdfList.animateScrollToItem(it) }
+                            }
+                        }, onPrev = {
+                            if (pdfHits.isNotEmpty()) { hitIdx = (hitIdx - 1 + pdfHits.size) % pdfHits.size; scope.launch { pdfList.animateScrollToItem(pdfHits[hitIdx]) } }
+                        }, onNext = {
+                            if (pdfHits.isNotEmpty()) { hitIdx = (hitIdx + 1) % pdfHits.size; scope.launch { pdfList.animateScrollToItem(pdfHits[hitIdx]) } }
+                        })
+                        if (query.length >= 2) Text(
+                            if (pdfHits.isEmpty()) stringResource(R.string.search_none) else stringResource(R.string.search_found, pdfHits.size, hitIdx + 1),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 18.dp),
+                        )
+                    }
+                    PdfViewer(uri, pdfList)
+                }
                 kind == Fmt.UNKNOWN -> LegacyNotice(name)
                 htmlFile != null -> Column(
                     Modifier
@@ -867,7 +938,56 @@ fun DocumentScreen(
             },
         )
     }
+    pageText?.let { t ->
+        AlertDialog(
+            onDismissRequest = { pageText = null },
+            title = { Text(stringResource(R.string.copy_page_text)) },
+            text = {
+                if (t.isBlank()) Text(stringResource(R.string.no_page_text))
+                else androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(t, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()))
+                }
+            },
+            confirmButton = {
+                if (t.isNotBlank()) TextButton(onClick = {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("PDF", t))
+                    toast(context, copiedMsg)
+                    pageText = null
+                }) { Text(stringResource(R.string.copy)) }
+            },
+            dismissButton = { TextButton(onClick = { pageText = null }) { Text(stringResource(R.string.close)) } },
+        )
+    }
     if (busy) ProgressDialog(stringResource(R.string.preparing), null)
+}
+
+/** PDF'ni tizim chop etish oynasiga yuboradi (u yerdan printer yoki "PDF sifatida saqlash"). */
+private fun printPdf(context: android.content.Context, uri: Uri, name: String) {
+    val pm = context.getSystemService(android.content.Context.PRINT_SERVICE) as android.print.PrintManager
+    pm.print(name, object : android.print.PrintDocumentAdapter() {
+        override fun onLayout(
+            oldAttributes: android.print.PrintAttributes?, newAttributes: android.print.PrintAttributes?,
+            cancellationSignal: android.os.CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?,
+        ) {
+            if (cancellationSignal?.isCanceled == true) { callback.onLayoutCancelled(); return }
+            callback.onLayoutFinished(
+                android.print.PrintDocumentInfo.Builder(name).setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT).build(), true,
+            )
+        }
+
+        override fun onWrite(
+            pages: Array<out android.print.PageRange>?, destination: ParcelFileDescriptor,
+            cancellationSignal: android.os.CancellationSignal?, callback: WriteResultCallback,
+        ) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { i -> java.io.FileOutputStream(destination.fileDescriptor).use { o -> i.copyTo(o) } }
+                callback.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES))
+            } catch (e: Exception) {
+                callback.onWriteFailed(e.message)
+            }
+        }
+    }, null)
 }
 
 private fun jsLit(s: String) = Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(s))
@@ -1269,7 +1389,7 @@ private fun Swatch(c: String, onPick: (String) -> Unit) {
 // ---------------------------------------------------------------- PDF
 
 @Composable
-private fun PdfViewer(uri: Uri) {
+private fun PdfViewer(uri: Uri, listState: androidx.compose.foundation.lazy.LazyListState) {
     val context = LocalContext.current
     val renderer = remember(uri) {
         try {
@@ -1316,6 +1436,7 @@ private fun PdfViewer(uri: Uri) {
                 }
             }
             .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offsetX },
+        state = listState,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {

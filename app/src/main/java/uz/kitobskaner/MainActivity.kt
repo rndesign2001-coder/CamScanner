@@ -140,7 +140,13 @@ class MainActivity : ComponentActivity() {
                             },
                             onSign = { nav.navigate("sign") },
                             onBookCam = { nav.navigate("bookcam") },
-                            onPdfOp = { nav.navigate("pdfops/$it") },
+                            onPdfOp = { m ->
+                                when (m) {
+                                    "pages" -> nav.navigate("pdfpages")
+                                    "annotate" -> nav.navigate("pdfannot")
+                                    else -> nav.navigate("pdfops/$m")
+                                }
+                            },
                         )
                     }
                     composable("project/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
@@ -222,6 +228,22 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
+                    composable("pdfpages?uri={uri}", arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" })) {
+                        val raw = Routes.dec(it.arguments?.getString("uri") ?: "")
+                        uz.kitobskaner.ui.pdf.PdfPagesScreen(
+                            initial = raw.takeIf { s -> s.isNotEmpty() }?.let { s -> Uri.parse(s) },
+                            onBack = { nav.popBackStack() },
+                            onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) },
+                        )
+                    }
+                    composable("pdfannot?uri={uri}", arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" })) {
+                        val raw = Routes.dec(it.arguments?.getString("uri") ?: "")
+                        uz.kitobskaner.ui.pdf.PdfAnnotateScreen(
+                            initial = raw.takeIf { s -> s.isNotEmpty() }?.let { s -> Uri.parse(s) },
+                            onBack = { nav.popBackStack() },
+                            onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) },
+                        )
+                    }
                     composable("pdfops/{mode}", arguments = listOf(navArgument("mode") { type = NavType.StringType })) {
                         uz.kitobskaner.ui.tools.PdfOpsScreen(
                             mode = it.arguments?.getString("mode") ?: "merge",
@@ -261,6 +283,8 @@ class MainActivity : ComponentActivity() {
                             onSign = { nav.navigate(Routes.place(it)) },
                             onCompress = { p -> nav.navigate(Routes.compress(p)) },
                             startEditing = it.arguments?.getString("edit") == "1",
+                            onPdfPages = { u -> nav.navigate("pdfpages?uri=" + Routes.enc(u.toString())) },
+                            onPdfAnnotate = { u -> nav.navigate("pdfannot?uri=" + Routes.enc(u.toString())) },
                         )
                     }
                     composable("settings") {

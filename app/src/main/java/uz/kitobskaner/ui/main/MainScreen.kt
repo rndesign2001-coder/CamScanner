@@ -181,6 +181,8 @@ fun MainScreen(
         Tool(R.drawable.ic3d_ppt, R.string.new_ppt, R.string.new_ppt_sub, 1) { onNewDoc("pptx") },
         Tool(R.drawable.ic3d_folder, R.string.tool_open_doc, R.string.tool_open_doc_sub, 1) { openDoc() },
         Tool(R.drawable.ic3d_sign, R.string.tool_sign, R.string.tool_sign_sub, 1, onSign),
+        Tool(R.drawable.ic3d_pdf, R.string.pdf_pages, R.string.pdf_pages_sub, 1) { onPdfOp("pages") },
+        Tool(R.drawable.ic3d_draw, R.string.pdf_annotate, R.string.pdf_annotate_sub, 1) { onPdfOp("annotate") },
         Tool(R.drawable.ic3d_merge, R.string.tool_merge, R.string.tool_merge_sub, 1) { onPdfOp("merge") },
         Tool(R.drawable.ic3d_compress, R.string.tool_compress, R.string.tool_compress_sub, 1, onCompress),
         Tool(R.drawable.ic3d_lock, R.string.tool_protect, R.string.tool_protect_sub, 1) { onPdfOp("protect") },
