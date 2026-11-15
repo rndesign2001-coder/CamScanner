@@ -270,6 +270,12 @@ class MainActivity : ComponentActivity() {
             else -> emptyList()
         }
         if (uris.isEmpty()) return
+        // hujjat ulashilgan bo'lsa (rasm yoki PDF emas) — ko'ruvchida ochamiz
+        val type = intent.type ?: ""
+        if (intent.action == Intent.ACTION_SEND && !type.startsWith("image/") && type != "application/pdf") {
+            openDoc.value = uris.first()
+            return
+        }
         val app = application as App
         lifecycleScope.launch {
             val isPdf = intent.type == "application/pdf"

@@ -122,29 +122,14 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import uz.kitobskaner.App
 import uz.kitobskaner.R
+import uz.kitobskaner.office.Fmt
+import uz.kitobskaner.office.FormatSniffer
 import uz.kitobskaner.office.HtmlRenderer
 import uz.kitobskaner.office.OfficeEditor
 import uz.kitobskaner.ui.components.ProgressDialog
 import uz.kitobskaner.ui.components.toast
 import java.io.File
 import kotlin.coroutines.resume
-
-enum class DocKind { PDF, DOCX, XLSX, PPTX, CSV, TXT, LEGACY, UNKNOWN }
-
-fun kindOf(name: String, mime: String?): DocKind {
-    val ext = name.substringAfterLast('.', "").lowercase()
-    return when {
-        ext == "pdf" || mime == "application/pdf" -> DocKind.PDF
-        ext == "docx" || mime?.contains("wordprocessingml") == true -> DocKind.DOCX
-        ext == "xlsx" || mime?.contains("spreadsheetml") == true -> DocKind.XLSX
-        ext == "pptx" || mime?.contains("presentationml") == true -> DocKind.PPTX
-        ext == "csv" || mime == "text/csv" || mime == "text/comma-separated-values" -> DocKind.CSV
-        ext in setOf("doc", "xls", "ppt", "rtf", "odt", "ods", "odp", "pps") || mime == "application/msword" ||
-            mime == "application/vnd.ms-excel" || mime == "application/vnd.ms-powerpoint" -> DocKind.LEGACY
-        ext in setOf("txt", "md", "log", "json", "xml", "html", "htm", "ini", "kt", "java", "py") || mime?.startsWith("text/") == true -> DocKind.TXT
-        else -> DocKind.UNKNOWN
-    }
-}
 
 private fun queryName(context: android.content.Context, uri: Uri): String {
     if (uri.scheme == "file") return File(uri.path ?: "doc").name
@@ -156,6 +141,8 @@ private fun queryName(context: android.content.Context, uri: Uri): String {
     }
     return uri.lastPathSegment ?: "doc"
 }
+
+private class TooLargeException : Exception("too large")
 
 /** evaluateJavascript natijasini (JSON qatori) oddiy matnga aylantiradi. */
 private fun jsString(raw: String?): String? = try {
@@ -189,12 +176,14 @@ fun DocumentScreen(
     val app = App.instance
     val scope = rememberCoroutineScope()
     val name = remember(uri) { queryName(context, uri) }
-    val kind = remember(uri) { kindOf(name, context.contentResolver.getType(uri)) }
-    val office = kind == DocKind.DOCX || kind == DocKind.XLSX || kind == DocKind.PPTX
-    val kindStr = when (kind) { DocKind.DOCX -> "docx"; DocKind.XLSX -> "xlsx"; DocKind.PPTX -> "pptx"; else -> "" }
+    var kind by remember(uri) { mutableStateOf(FormatSniffer.byExtension(name, context.contentResolver.getType(uri))) }
+    val office = kind.editable
+    // sahifa/ko'rinish rejimlari bor (QO dvigateli bilan) formatlar
+    val paged = kind in setOf(Fmt.DOCX, Fmt.XLSX, Fmt.PPTX, Fmt.DOC, Fmt.XLS, Fmt.PPT, Fmt.ODT, Fmt.ODS, Fmt.ODP, Fmt.RTF)
+    val kindStr = when (kind) { Fmt.DOCX -> "docx"; Fmt.XLSX -> "xlsx"; Fmt.PPTX -> "pptx"; else -> "" }
     val base = name.substringBeforeLast('.')
     val ext = name.substringAfterLast('.', "txt").lowercase()
-    var loading by remember { mutableStateOf(kind != DocKind.PDF) }
+    var loading by remember { mutableStateOf(kind != Fmt.PDF) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
@@ -216,6 +205,7 @@ fun DocumentScreen(
     val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
     val errEnc = stringResource(R.string.err_encrypted)
+    val errLarge = stringResource(R.string.err_too_large)
     val savedMsg = stringResource(R.string.saved_ok)
     val savedOriginal = stringResource(R.string.saved_original)
     val savedFallback = stringResource(R.string.saved_copy_fallback)
@@ -223,15 +213,8 @@ fun DocumentScreen(
     val newText = stringResource(R.string.new_text)
 
     suspend fun render(bytes: ByteArray) {
-        val html = withContext(Dispatchers.IO) {
-            val r = HtmlRenderer(::encodeImage)
-            when (kind) {
-                DocKind.DOCX -> r.docx(bytes.inputStream(), name)
-                DocKind.XLSX -> r.xlsx(bytes.inputStream(), name)
-                DocKind.PPTX -> r.pptx(bytes.inputStream(), name)
-                DocKind.CSV -> r.csv(bytes.toString(Charsets.UTF_8), name)
-                else -> null
-            }
+        val html = withContext(Dispatchers.Default) {
+            HtmlRenderer(if (kind == Fmt.IMAGE) ::encodeImageLarge else ::encodeImage).render(kind, bytes, name)
         } ?: return
         htmlFile = withContext(Dispatchers.IO) {
             File(context.cacheDir, "view/doc_${System.currentTimeMillis()}.html").also { f ->
@@ -242,19 +225,29 @@ fun DocumentScreen(
     }
 
     suspend fun readOriginal(): ByteArray = withContext(Dispatchers.IO) {
+        val size = uz.kitobskaner.pdf.PdfTools.size(context, uri)
+        if (size > 300L * 1024 * 1024) throw TooLargeException()
         context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("open")
     }
 
     LaunchedEffect(uri) {
-        if (kind == DocKind.PDF) return@LaunchedEffect
-        if (kind == DocKind.LEGACY) { loading = false; return@LaunchedEffect }
+        if (kind == Fmt.PDF) return@LaunchedEffect
         try {
+            // format fayl mazmunidan aniqlanadi (kengaytma noto'g'ri bo'lishi mumkin)
+            val head = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { s -> ByteArray(8192).let { b -> val n = s.read(b); if (n > 0) b.copyOf(n) else ByteArray(0) } }
+            } ?: throw IllegalStateException("open")
+            if (FormatSniffer.detect(head, name, null) == Fmt.PDF) { kind = Fmt.PDF; loading = false; return@LaunchedEffect }
             val bytes = readOriginal()
-            if (office) work = bytes
-            if (kind == DocKind.TXT || kind == DocKind.CSV) text = bytes.toString(Charsets.UTF_8)
-            render(bytes)
+            kind = withContext(Dispatchers.Default) { FormatSniffer.detect(bytes, name, context.contentResolver.getType(uri)) }
+            if (kind == Fmt.PDF) { loading = false; return@LaunchedEffect }
+            if (kind.editable) work = bytes
+            if (kind == Fmt.TXT || kind == Fmt.CSV) text = HtmlRenderer.decodeText(bytes)
+            if (kind != Fmt.UNKNOWN && kind != Fmt.TXT) render(bytes)
         } catch (e: HtmlRenderer.EncryptedException) {
             error = errEnc
+        } catch (e: TooLargeException) {
+            error = errLarge
         } catch (e: Throwable) {
             error = errOpen
         }
@@ -317,7 +310,7 @@ fun DocumentScreen(
                 unsaved = false
                 toast(context, msg)
                 if (after != null) after() else {
-                    pendingSlide = if (kind == DocKind.PPTX) (web.call("QO.cur()")?.toIntOrNull() ?: -1) else -1
+                    pendingSlide = if (kind == Fmt.PPTX) (web.call("QO.cur()")?.toIntOrNull() ?: -1) else -1
                     render(bytes) // identifikatorlar yangilanadi
                 }
             } catch (e: Throwable) {
@@ -379,7 +372,7 @@ fun DocumentScreen(
     }
 
     BackHandler(enabled = office && (editing || unsaved)) { if (editing && !unsaved) exitEdit() else goBack() }
-    BackHandler(enabled = kind == DocKind.TXT && dirty) { leave = onBack }
+    BackHandler(enabled = kind == Fmt.TXT && dirty) { leave = onBack }
 
     fun saveTxt() {
         scope.launch {
@@ -412,7 +405,7 @@ fun DocumentScreen(
                 },
                 actions = {
                     when {
-                        kind == DocKind.PDF -> {
+                        kind == Fmt.PDF -> {
                             IconButton(onClick = { onSign(uri) }) { Icon(Icons.Rounded.Approval, stringResource(R.string.sign_title)) }
                             IconButton(onClick = {
                                 scope.launch {
@@ -430,7 +423,7 @@ fun DocumentScreen(
                                 Icon(Icons.Rounded.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
-                        office && htmlFile != null -> {
+                        paged && htmlFile != null -> {
                             IconButton(onClick = {
                                 mobileView = !mobileView
                                 web.eval("QO.view('${if (mobileView) "mobile" else "desktop"}')")
@@ -441,7 +434,7 @@ fun DocumentScreen(
                                 )
                             }
                             IconButton(onClick = { searching = !searching; if (!searching) web.clearFind() }) { Icon(Icons.Rounded.Search, null) }
-                            IconButton(onClick = {
+                            if (office) IconButton(onClick = {
                                 searching = false
                                 web.clearFind()
                                 if (kindStr != "docx" && mobileView) mobileView = false
@@ -449,11 +442,11 @@ fun DocumentScreen(
                                 web.eval("QO.edit(true)")
                             }) { Icon(Icons.Rounded.Edit, stringResource(R.string.edit)) }
                         }
-                        kind == DocKind.TXT -> IconButton(onClick = { saveTxt() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
-                        kind == DocKind.CSV && htmlFile != null ->
+                        kind == Fmt.TXT -> IconButton(onClick = { saveTxt() }, enabled = dirty) { Icon(Icons.Rounded.Save, null) }
+                        htmlFile != null ->
                             IconButton(onClick = { searching = !searching; if (!searching) web.clearFind() }) { Icon(Icons.Rounded.Search, null) }
                     }
-                    if (kind != DocKind.PDF && kind != DocKind.UNKNOWN && !editing) Box {
+                    if (kind != Fmt.PDF && kind != Fmt.UNKNOWN && !editing) Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             if (htmlFile != null) DropdownMenuItem(
@@ -494,15 +487,15 @@ fun DocumentScreen(
             when {
                 error != null -> Text(error!!, Modifier.align(Alignment.Center).padding(24.dp), textAlign = TextAlign.Center)
                 loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                kind == DocKind.PDF -> PdfViewer(uri)
-                kind == DocKind.LEGACY -> LegacyNotice(name)
+                kind == Fmt.PDF -> PdfViewer(uri)
+                kind == Fmt.UNKNOWN -> LegacyNotice(name)
                 htmlFile != null -> Column(
                     Modifier
                         .fillMaxSize()
                         .imePadding()
                 ) {
                     if (searching) SearchBar(query, onQuery = { query = it; web.find(it) }, onPrev = { web.next(false) }, onNext = { web.next(true) })
-                    OfficeWebView(htmlFile!!, web, Modifier.weight(1f).fillMaxWidth())
+                    OfficeWebView(htmlFile!!, web, Modifier.weight(1f).fillMaxWidth(), scripts = kind != Fmt.HTML && kind != Fmt.EPUB)
                     if (editing) EditToolbar(
                         kind = kind,
                         moveMode = moveMode,
@@ -513,7 +506,7 @@ fun DocumentScreen(
                         onDelSlide = { slideOp(false) },
                     )
                 }
-                kind == DocKind.TXT -> OutlinedTextField(
+                kind == Fmt.TXT -> OutlinedTextField(
                     value = text,
                     onValueChange = { text = it; dirty = true },
                     modifier = Modifier
@@ -555,7 +548,7 @@ fun DocumentScreen(
             confirmButton = {
                 TextButton(onClick = {
                     leave = null
-                    if (kind == DocKind.TXT) { saveTxt(); return@TextButton }
+                    if (kind == Fmt.TXT) { saveTxt(); return@TextButton }
                     afterSave = action
                     startSave()
                 }) { Text(stringResource(R.string.save)) }
@@ -565,7 +558,7 @@ fun DocumentScreen(
                     TextButton(onClick = { leave = null }) { Text(stringResource(R.string.cancel)) }
                     TextButton(onClick = {
                         leave = null
-                        if (kind == DocKind.TXT) { dirty = false; action(); return@TextButton }
+                        if (kind == Fmt.TXT) { dirty = false; action(); return@TextButton }
                         discardAnd(action)
                     }) { Text(stringResource(R.string.dont_save), color = MaterialTheme.colorScheme.error) }
                 }
@@ -584,7 +577,7 @@ private val markColors = listOf("transparent", "#FFF176", "#A5D6A7", "#81D4FA", 
 
 @Composable
 private fun EditToolbar(
-    kind: DocKind,
+    kind: Fmt,
     moveMode: Boolean,
     onJs: (String) -> Unit,
     onMove: () -> Unit,
@@ -597,7 +590,7 @@ private fun EditToolbar(
     Surface(tonalElevation = 6.dp, shadowElevation = 12.dp, color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth()) {
             val hint = when {
-                kind == DocKind.XLSX -> stringResource(R.string.xlsx_hint)
+                kind == Fmt.XLSX -> stringResource(R.string.xlsx_hint)
                 moveMode -> stringResource(R.string.move_mode)
                 else -> null
             }
@@ -613,7 +606,7 @@ private fun EditToolbar(
             ) {
                 Tool(Icons.AutoMirrored.Rounded.Undo) { onJs("QO.cmd('undo')") }
                 Tool(Icons.AutoMirrored.Rounded.Redo) { onJs("QO.cmd('redo')") }
-                if (kind != DocKind.XLSX) {
+                if (kind != Fmt.XLSX) {
                     Sep()
                     Tool(Icons.Rounded.FormatBold, enabled = !moveMode) { onJs("QO.cmd('bold')") }
                     Tool(Icons.Rounded.FormatItalic, enabled = !moveMode) { onJs("QO.cmd('italic')") }
@@ -639,7 +632,7 @@ private fun EditToolbar(
                     Tool(Icons.AutoMirrored.Rounded.FormatAlignRight, enabled = !moveMode) { onJs("QO.cmd('justifyRight')") }
                     Tool(Icons.Rounded.FormatAlignJustify, enabled = !moveMode) { onJs("QO.cmd('justifyFull')") }
                 }
-                if (kind == DocKind.PPTX) {
+                if (kind == Fmt.PPTX) {
                     Sep()
                     Tool(Icons.Rounded.OpenWith, selected = moveMode, label = stringResource(R.string.move_mode)) { onMove() }
                     Tool(Icons.Rounded.Delete, enabled = moveMode, label = stringResource(R.string.delete_shape)) { onJs("QO.del()") }

@@ -55,12 +55,13 @@ class WebController {
 /** Office hujjatining HTML ko'rinishi: kattalashtirish (chimdish), aylantirish, qidirish. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun OfficeWebView(htmlFile: File, controller: WebController, modifier: Modifier = Modifier) {
+fun OfficeWebView(htmlFile: File, controller: WebController, modifier: Modifier = Modifier, scripts: Boolean = true) {
     val key = remember(htmlFile) { htmlFile.absolutePath + htmlFile.lastModified() }
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
-                settings.javaScriptEnabled = true // faqat o'zimiz yaratgan HTML: varaq almashtirish, slayd masshtabi
+                // JavaScript faqat o'zimiz yaratgan sahifalar uchun; begona HTML/EPUB — o'chirilgan
+                settings.javaScriptEnabled = scripts
                 settings.allowFileAccess = true
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
@@ -85,6 +86,7 @@ fun OfficeWebView(htmlFile: File, controller: WebController, modifier: Modifier 
         },
         update = { wv ->
             controller.view = wv
+            wv.settings.javaScriptEnabled = scripts
             if (wv.tag != key) {
                 wv.tag = key
                 wv.loadUrl("file://" + htmlFile.absolutePath)
@@ -95,15 +97,19 @@ fun OfficeWebView(htmlFile: File, controller: WebController, modifier: Modifier 
     )
 }
 
+/** Rasm ko'ruvchi uchun: kattalashtirishda aniq ko'rinishi uchun yuqoriroq o'lcham. */
+fun encodeImageLarge(bytes: ByteArray, name: String): String? = encodeImageImpl(bytes, name, 3200, allowAll = true)
+
 /** Hujjat ichidagi rasmni data: URI ga aylantiradi; katta rasmlarni kichraytiradi. */
-fun encodeImage(bytes: ByteArray, name: String): String? {
+fun encodeImage(bytes: ByteArray, name: String): String? = encodeImageImpl(bytes, name, 1600, allowAll = false)
+
+private fun encodeImageImpl(bytes: ByteArray, name: String, maxSide: Int, allowAll: Boolean): String? {
     val lower = name.lowercase()
-    if (lower.endsWith(".emf") || lower.endsWith(".wmf") || lower.endsWith(".tif") || lower.endsWith(".tiff")) return null
+    if (!allowAll && (lower.endsWith(".emf") || lower.endsWith(".wmf") || lower.endsWith(".tif") || lower.endsWith(".tiff"))) return null
     val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
     if (o.outWidth <= 0) return null
     val mime = o.outMimeType ?: "image/png"
-    val maxSide = 1600
     if (max(o.outWidth, o.outHeight) <= maxSide && bytes.size < 1_500_000 && mime in setOf("image/png", "image/jpeg", "image/gif", "image/webp")) {
         return "data:$mime;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
     }

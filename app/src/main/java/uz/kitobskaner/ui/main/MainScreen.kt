@@ -166,15 +166,8 @@ fun MainScreen(
     val openPdf = { pdfPicker.launch(arrayOf("application/pdf")) }
     val docPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) onOpenDoc(uri) }
     val openDoc = {
-        docPicker.launch(
-            arrayOf(
-                "application/pdf",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                "text/*",
-            )
-        )
+        // barcha fayllar: format mazmunidan aniqlanadi (Word, Excel, PowerPoint, PDF, ODF, RTF, EPUB, rasm, matn...)
+        docPicker.launch(arrayOf("*/*"))
     }
 
     val tools = listOf(

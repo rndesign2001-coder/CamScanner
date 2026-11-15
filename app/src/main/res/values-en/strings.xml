@@ -271,7 +271,7 @@
     <string name="crash_title">The app crashed last time</string>
     <string name="crash_text">Send the error details to the developer so it can be fixed quickly.</string>
     <string name="search_in_doc">Search in document</string>
-    <string name="legacy_format">This is a legacy-format file (DOC, XLS, PPT, RTF or ODF). QulayOfis opens modern DOCX, XLSX, PPTX, PDF, CSV and TXT. Re-save it as DOCX/XLSX/PPTX in Word/Excel/WPS or ask the sender for the new format.</string>
+    <string name="legacy_format">QulayOfis cannot open this file type. Supported: Word (DOC, DOCX, RTF, ODT), Excel (XLS, XLSX, CSV, ODS), PowerPoint (PPT, PPTX, PPSX, ODP), PDF, EPUB, HTML, text and images.</string>
     <string name="err_encrypted">This file is password-protected or in an old format (.doc/.xls/.ppt). Save it without a password as .docx/.xlsx/.pptx.</string>
     <string name="view_desktop">Desktop view (pages)</string>
     <string name="view_mobile">Mobile view</string>
@@ -295,4 +295,5 @@
     <string name="last_slide">Cannot delete the only slide</string>
     <string name="editing_on">Editing: tap text to type</string>
     <string name="print_pdf">Print / PDF</string>
+    <string name="err_too_large">The file is too large (over 300 MB).</string>
 </resources>

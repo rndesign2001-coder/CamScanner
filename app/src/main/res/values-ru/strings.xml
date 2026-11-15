@@ -271,7 +271,7 @@
     <string name="crash_title">В прошлый раз произошла ошибка</string>
     <string name="crash_text">Отправьте сведения об ошибке разработчику — это поможет быстро её исправить.</string>
     <string name="search_in_doc">Поиск в документе</string>
-    <string name="legacy_format">Это файл старого формата (DOC, XLS, PPT, RTF или ODF). QulayOfis открывает современные DOCX, XLSX, PPTX, PDF, CSV и TXT. Пересохраните файл в Word/Excel/WPS как DOCX/XLSX/PPTX или попросите отправителя прислать новый формат.</string>
+    <string name="legacy_format">QulayOfis не может открыть этот тип файла. Поддерживаются: Word (DOC, DOCX, RTF, ODT), Excel (XLS, XLSX, CSV, ODS), PowerPoint (PPT, PPTX, PPSX, ODP), PDF, EPUB, HTML, текст и изображения.</string>
     <string name="err_encrypted">Файл защищён паролем или в старом формате (.doc/.xls/.ppt). Сохраните его без пароля как .docx/.xlsx/.pptx.</string>
     <string name="view_desktop">Вид как на ПК (страницы)</string>
     <string name="view_mobile">Мобильный вид</string>
@@ -295,4 +295,5 @@
     <string name="last_slide">Нельзя удалить единственный слайд</string>
     <string name="editing_on">Режим правки: нажмите на текст</string>
     <string name="print_pdf">Печать / PDF</string>
+    <string name="err_too_large">Файл слишком большой (более 300 МБ).</string>
 </resources>

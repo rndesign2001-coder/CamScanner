@@ -788,16 +788,12 @@ body:not(.mobile) .pb{border:none;margin:0}
             }
         }
         val date1904 = files["xl/workbook.xml"]?.let { String(it).contains("date1904=\"1\"") } == true
-        val tabs = StringBuilder("<div class=\"tabs\">")
-        val body = StringBuilder()
-        sheets.forEachIndexed { si, (name, path) ->
-            tabs.append("<button onclick=\"show($si)\" id=\"tb$si\"${if (si == 0) " class=\"on\"" else ""}>${esc(name)}</button>")
-            body.append("<div class=\"sheet\" id=\"sh$si\" style=\"display:${if (si == 0) "block" else "none"}\">")
-            body.append(files[path]?.let { xlsxSheet(it, shared, fonts, fills, borders, xfs, customFmt, date1904, si) } ?: "")
-            body.append("</div>")
-        }
-        tabs.append("</div>")
-        val css = """
+        return sheetsPage(title, sheets.mapIndexed { si, (name, path) ->
+            name to (files[path]?.let { xlsxSheet(it, shared, fonts, fills, borders, xfs, customFmt, date1904, si) } ?: "")
+        })
+    }
+
+    private val sheetCss = """
 .tabs{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:8px;background:#E9EBF0}
 .tabs button{border:1px solid #c9ccd6;background:#fff;border-radius:16px;padding:6px 14px;font-size:14px;white-space:nowrap}
 .tabs button.on{background:#1D6F42;color:#fff;border-color:#1D6F42}
@@ -816,9 +812,42 @@ body.mobile .sheet{background:transparent;box-shadow:none}
 .kv{display:flex;justify-content:space-between;gap:14px;padding:4px 0;border-bottom:1px solid #f0f0f0}
 .kv span{color:#7a7f8c}.kv b{font-weight:600;text-align:right}
 """
+
+    /** Varaqlar (yorliqlar bilan) sahifasi — XLSX, XLS, ODS uchun umumiy. */
+    private fun sheetsPage(title: String, parts: List<Pair<String, String>>): String {
+        val tabs = StringBuilder("<div class=\"tabs\">")
+        val body = StringBuilder()
+        parts.forEachIndexed { si, (name, html) ->
+            tabs.append("<button onclick=\"show($si)\" id=\"tb$si\"${if (si == 0) " class=\"on\"" else ""}>${esc(name)}</button>")
+            body.append("<div class=\"sheet\" id=\"sh$si\" style=\"display:${if (si == 0) "block" else "none"}\">").append(html).append("</div>")
+        }
+        tabs.append("</div>")
         val script = """function show(i){var s=document.querySelectorAll('.sheet');for(var k=0;k<s.length;k++){s[k].style.display=k==i?'block':'none';document.getElementById('tb'+k).className=k==i?'on':''}}"""
-        val tabBar = if (sheets.size > 1) tabs.toString() else ""
-        return page(title, css, tabBar + body, script, "xlsx")
+        return page(title, sheetCss, (if (parts.size > 1) tabs.toString() else "") + body, script, "xlsx")
+    }
+
+    /** Oddiy qiymatlar jadvali (formatlashsiz): kalit = qator*1000 + ustun. */
+    private fun gridTable(cells: Map<Long, String>): String {
+        var maxR = -1
+        var maxC = -1
+        for ((k, v) in cells) if (v.isNotEmpty()) { val r = (k / 1000).toInt(); val c = (k % 1000).toInt(); if (r > maxR) maxR = r; if (c > maxC) maxC = c }
+        if (maxR < 0) return "<p style=\"padding:16px;color:#777\">—</p>"
+        maxR = minOf(maxR, 10000); maxC = minOf(maxC, 255)
+        val sb = StringBuilder("<table class=\"x\"><colgroup><col style=\"width:38px\">")
+        for (c in 0..maxC) sb.append("<col style=\"width:96px\">")
+        sb.append("</colgroup><tr><th class=\"r\"></th>")
+        for (c in 0..maxC) sb.append("<th>${colName(c)}</th>")
+        sb.append("</tr>")
+        for (r in 0..maxR) {
+            sb.append("<tr><th class=\"r\">${r + 1}</th>")
+            for (c in 0..maxC) {
+                val v = cells[r.toLong() * 1000 + c] ?: ""
+                val num = v.isNotEmpty() && v.toDoubleOrNull() != null
+                sb.append(if (num) "<td style=\"text-align:right\">" else "<td>").append(esc(v)).append("</td>")
+            }
+            sb.append("</tr>")
+        }
+        return sb.append("</table>").toString()
     }
 
     private fun colIndex(ref: String): Int {
@@ -1241,6 +1270,11 @@ body.mobile .sheet{background:transparent;box-shadow:none}
             body.append("<div class=\"slide-wrap\" id=\"s$i\"><div class=\"no\">${i + 1} / ${order.size}</div><div class=\"slide\" style=\"width:${fmt(W)}pt;height:${fmt(H)}pt;$bgCss\">$inner</div></div>")
             thumbs.append("<button onclick=\"go($i)\">${i + 1}</button>")
         }
+        return slidesPage(title, body.toString(), thumbs.toString(), order.size)
+    }
+
+    /** Slaydlar sahifasi (PPTX, PPT, ODP): ro'yxat, raqamlar paneli, namoyish rejimi, konspekt. */
+    private fun slidesPage(title: String, body: String, thumbs: String, n: Int): String {
         val css = """
 body{padding:10px 0 70px}
 .slide-wrap{position:relative;margin:0 auto 16px;width:96%;box-shadow:0 3px 14px rgba(0,0,0,.22);border-radius:6px;overflow:hidden;background:#fff}
@@ -1265,9 +1299,11 @@ body.mobile #outline{display:block;padding:6px 4px}
 .oc{background:#fff;border-radius:12px;margin:8px;padding:12px 16px;box-shadow:0 1px 6px rgba(0,0,0,.15);font-size:17px;line-height:1.45}
 .oc p{margin:5px 0}
 .on{font:700 12px sans-serif;color:#1E6BFF}
+.qx{display:none;position:fixed;top:10px;right:10px;z-index:300;width:42px;height:42px;border-radius:21px;border:0;background:rgba(255,255,255,.18);color:#fff;font:600 20px sans-serif}
+body.show .qx{display:block}
 """
         val script = """
-var cur=0,n=${order.size};
+var cur=0,n=$n;
 function fit(){var w=document.querySelectorAll('.slide-wrap');for(var i=0;i<w.length;i++){var s=w[i].querySelector('.slide');
 var cw=w[i].clientWidth||window.innerWidth;var k=cw/s.offsetWidth;s.style.transform='scale('+k+')';w[i].style.height=(s.offsetHeight*k)+'px'}}
 function go(i){cur=Math.max(0,Math.min(n-1,i));var e=document.getElementById('s'+cur);if(document.body.classList.contains('show')){mark()}else{e.scrollIntoView({behavior:'smooth',block:'start'})}}
@@ -1278,8 +1314,8 @@ var sx=0;document.addEventListener('touchstart',function(e){sx=e.touches[0].clie
 document.addEventListener('touchend',function(e){if(!document.body.classList.contains('show'))return;var dx=e.changedTouches[0].clientX-sx;
 if(dx<-40)go(cur+1);else if(dx>40)go(cur-1);else if(e.changedTouches[0].clientX>window.innerWidth/2)go(cur+1);else go(cur-1)});
 window.addEventListener('resize',fit);fit();"""
-        val bar = "<div class=\"bar\"><button class=\"play\" onclick=\"play()\">▶</button>$thumbs</div>"
-        return page(title, css, body.toString() + bar + "<div id=\"outline\"></div>", script, "pptx")
+        val bar = "<div class=\"bar\"><button class=\"play\" onclick=\"play()\">▶</button>$thumbs</div><button class=\"qx\" onclick=\"stop()\">✕</button>"
+        return page(title, css, body + bar + "<div id=\"outline\"></div>", script, "pptx")
     }
 
     /** Slayd master shakllarini ko'rsatadimi (showMasterSp="0" bo'lsa yo'q). */
@@ -1853,9 +1889,786 @@ table.x th{background:#F3F4F6;color:#555;font-weight:normal;font-size:12px;borde
         return out
     }
 
+    // ---------------------------------------------------------------- universal kirish
+
+    /** Formatga qarab HTML ko'rinish; PDF, matn va noma'lum formatlar uchun null. */
+    fun render(fmt: Fmt, bytes: ByteArray, title: String): String? = when (fmt) {
+        Fmt.DOCX -> docx(bytes.inputStream(), title)
+        Fmt.XLSX -> xlsx(bytes.inputStream(), title)
+        Fmt.PPTX -> pptx(bytes.inputStream(), title)
+        Fmt.CSV -> csv(decodeText(bytes), title)
+        Fmt.DOC -> legacyDoc(bytes, title)
+        Fmt.XLS -> legacyXls(bytes, title)
+        Fmt.PPT -> legacyPpt(bytes, title)
+        Fmt.ODT -> odt(bytes, title)
+        Fmt.ODS -> ods(bytes, title)
+        Fmt.ODP -> odp(bytes, title)
+        Fmt.RTF -> rtf(bytes, title)
+        Fmt.EPUB -> epub(bytes, title)
+        Fmt.HTML -> foreignHtml(bytes, title)
+        Fmt.IMAGE -> imagePage(bytes, title)
+        Fmt.ENCRYPTED -> throw EncryptedException()
+        else -> null
+    }
+
+    /** Sahifalarga bo'linadigan oddiy hujjat (DOC, ODT, RTF). */
+    private fun flowPage(title: String, body: String, pageW: Float = 595f, pageH: Float = 842f, margin: Float = 64f): String {
+        val css = """
+#docwrap{overflow:hidden}
+#doc{padding:12px 12px 2px;box-sizing:border-box}
+.page{background:#fff;width:${fmt(pageW)}pt;min-height:${fmt(pageH)}pt;margin:0 auto 16px;padding:${fmt(margin)}pt;box-sizing:border-box;position:relative;
+box-shadow:0 2px 10px rgba(0,0,0,.18);font-size:11pt;line-height:1.35;overflow-wrap:break-word}
+.pgno{position:absolute;left:0;right:0;bottom:12pt;text-align:center;font:9pt sans-serif;color:#9aa}
+body.mobile #doc{padding:6px;width:auto!important;transform:none!important;margin:0!important}
+body.mobile #docwrap{height:auto!important}
+body.mobile .page{width:auto;min-height:0;padding:16px 14px;margin:0 0 10px}
+p{margin:0 0 6pt}
+h1{font-size:20pt;margin:12pt 0 6pt}h2{font-size:16pt;margin:10pt 0 5pt}h3,h4,h5,h6{font-size:13pt;margin:8pt 0 4pt}
+table.t{border-collapse:collapse;margin:6pt 0;max-width:100%}
+table.t td{border:1px solid #999;padding:3pt 5pt;vertical-align:top}
+table.t td p{margin:0}
+img{max-width:100%;height:auto}
+ul,ol{margin:0 0 6pt;padding-left:22pt}
+.pb{display:block;height:0;border-top:1px dashed #bbb;margin:10pt 0}
+body:not(.mobile) .pb{border:none;margin:0}
+"""
+        val pg = "{\"w\":${fmt(pageW)},\"h\":${fmt(pageH)}}"
+        return page(title, css, "<div id=\"docwrap\"><div id=\"doc\"><div class=\"page\">$body</div></div></div>", "", "docx", " data-pg='$pg'")
+    }
+
+    // ---------------------------------------------------------------- eski binar formatlar
+
+    fun legacyDoc(bytes: ByteArray, title: String): String {
+        val paras = try { LegacyReaders.docParagraphs(Cfb(bytes)) } catch (e: LegacyReaders.EncryptedLegacy) { throw EncryptedException() }
+        val sb = StringBuilder()
+        var table: StringBuilder? = null
+        fun close() { table?.let { sb.append(it).append("</table>") }; table = null }
+        for (raw in paras) {
+            if (raw == "\u000c") { close(); sb.append("<div class=\"pb\" data-brk=\"after\"></div>"); continue }
+            if (raw.contains('\u0007')) {
+                val t = table ?: StringBuilder("<table class=\"t\">").also { table = it }
+                // katak oxiri — \u0007, qator oxiri — qo'shimcha \u0007
+                for (rowText in raw.split("\u0007\u0007")) {
+                    val cells = rowText.split('\u0007').dropLastWhile { it.isEmpty() }
+                    if (cells.isEmpty()) continue
+                    t.append("<tr>")
+                    cells.forEach { t.append("<td>").append(esc(it).replace("\u000b", "<br>")).append("</td>") }
+                    t.append("</tr>")
+                }
+                continue
+            }
+            close()
+            val txt = raw.replace('\u000b', '\n').replace('\t', ' ')
+            sb.append(if (txt.isBlank()) "<p><br></p>" else "<p>${esc(txt).replace("\n", "<br>")}</p>")
+        }
+        close()
+        return flowPage(title, sb.toString())
+    }
+
+    fun legacyXls(bytes: ByteArray, title: String): String {
+        val sheets = try { LegacyReaders.xlsSheets(Cfb(bytes)) } catch (e: LegacyReaders.EncryptedLegacy) { throw EncryptedException() }
+        val parts = sheets.map { it.name to gridTable(it.cells) }
+        return sheetsPage(title, parts.ifEmpty { listOf("Sheet1" to gridTable(emptyMap())) })
+    }
+
+    fun legacyPpt(bytes: ByteArray, title: String): String {
+        val slides = try { LegacyReaders.pptSlides(Cfb(bytes)) } catch (e: LegacyReaders.EncryptedLegacy) { throw EncryptedException() }
+        if (slides.isEmpty()) throw IllegalStateException("no slides")
+        val body = StringBuilder()
+        val thumbs = StringBuilder()
+        slides.forEachIndexed { i, s ->
+            val inner = StringBuilder()
+            if (s.title.isNotBlank()) inner.append("<div class=\"sp\" style=\"left:36pt;top:24pt;width:648pt;height:96pt;padding:4pt 8pt;justify-content:center\">")
+                .append("<p style=\"font-size:32pt;font-weight:bold;color:#1F2937\">${esc(s.title)}</p></div>")
+            if (s.body.isNotEmpty()) {
+                inner.append("<div class=\"sp\" style=\"left:48pt;top:136pt;width:624pt;height:370pt;padding:4pt 8pt;justify-content:flex-start;overflow:hidden\">")
+                s.body.forEach { t ->
+                    t.split('\n').forEachIndexed { k, line ->
+                        if (line.isNotBlank()) inner.append("<p style=\"font-size:20pt;margin:0 0 6pt;color:#222\">${if (k == 0) "• " else ""}${esc(line)}</p>")
+                    }
+                }
+                inner.append("</div>")
+            }
+            body.append("<div class=\"slide-wrap\" id=\"s$i\"><div class=\"no\">${i + 1} / ${slides.size}</div><div class=\"slide\" style=\"width:720pt;height:540pt;background:#FFFFFF\">$inner</div></div>")
+            thumbs.append("<button onclick=\"go($i)\">${i + 1}</button>")
+        }
+        return slidesPage(title, body.toString(), thumbs.toString(), slides.size)
+    }
+
+    // ---------------------------------------------------------------- OpenDocument (ODT/ODS/ODP)
+
+    private class Odf(val files: Map<String, ByteArray>) {
+        val css = HashMap<String, String>()
+        val parent = HashMap<String, String>()
+        val numbered = HashSet<String>()
+        fun style(name: String?): String {
+            if (name == null) return ""
+            val sb = StringBuilder()
+            var n: String? = name
+            var guard = 0
+            val chain = ArrayList<String>()
+            while (n != null && guard++ < 10) { chain += n; n = parent[n] }
+            for (c in chain.asReversed()) css[c]?.let { sb.append(it) }
+            return sb.toString()
+        }
+    }
+
+    private fun odfLen(v: String?): Float? {
+        val m = Regex("(-?[\\d.]+)\\s*(cm|mm|in|pt|pc|px)?").matchEntire(v?.trim() ?: return null) ?: return null
+        val n = m.groupValues[1].toFloatOrNull() ?: return null
+        return when (m.groupValues[2]) { "cm" -> n * 28.3465f; "mm" -> n * 2.83465f; "in" -> n * 72f; "pc" -> n * 12f; "px" -> n * 0.75f; else -> n }
+    }
+
+    private fun odfStyles(o: Odf, b: ByteArray?) {
+        b ?: return
+        val p = parser(b)
+        while (p.next() != XmlPullParser.END_DOCUMENT) {
+            if (p.eventType != XmlPullParser.START_TAG) continue
+            when (p.name) {
+                "style:style" -> {
+                    val name = p.a("style:name") ?: continue
+                    p.a("style:parent-style-name")?.let { o.parent[name] = it }
+                    val sb = StringBuilder()
+                    p.children({ n ->
+                        when (n) {
+                            "style:text-properties" -> {
+                                if (p.a("fo:font-weight") == "bold") sb.append("font-weight:bold;")
+                                if (p.a("fo:font-style") == "italic") sb.append("font-style:italic;")
+                                val u = p.a("style:text-underline-style"); val s = p.a("style:text-line-through-style")
+                                val dec = listOfNotNull(if (u != null && u != "none") "underline" else null, if (s != null && s != "none") "line-through" else null)
+                                if (dec.isNotEmpty()) sb.append("text-decoration:${dec.joinToString(" ")};")
+                                p.a("fo:color")?.let { sb.append("color:$it;") }
+                                p.a("fo:font-size")?.let { v -> if (v.endsWith("%")) sb.append("font-size:$v;") else odfLen(v)?.let { sb.append("font-size:${fmt(it)}pt;") } }
+                                p.a("fo:background-color")?.takeIf { it != "transparent" }?.let { sb.append("background:$it;") }
+                                p.a("style:font-name")?.let { sb.append("font-family:'${it.replace("'", "")}',sans-serif;") }
+                                if (p.a("fo:text-transform") == "uppercase") sb.append("text-transform:uppercase;")
+                                p.skipTag()
+                            }
+                            "style:paragraph-properties" -> {
+                                when (p.a("fo:text-align")) {
+                                    "center" -> sb.append("text-align:center;"); "end", "right" -> sb.append("text-align:right;")
+                                    "justify" -> sb.append("text-align:justify;"); "start", "left" -> sb.append("text-align:left;")
+                                }
+                                odfLen(p.a("fo:margin-top"))?.let { sb.append("margin-top:${fmt(it)}pt;") }
+                                odfLen(p.a("fo:margin-bottom"))?.let { sb.append("margin-bottom:${fmt(it)}pt;") }
+                                odfLen(p.a("fo:margin-left"))?.let { if (it != 0f) sb.append("margin-left:${fmt(it)}pt;") }
+                                odfLen(p.a("fo:text-indent"))?.let { if (it != 0f) sb.append("text-indent:${fmt(it)}pt;") }
+                                p.a("fo:background-color")?.takeIf { it != "transparent" }?.let { sb.append("background:$it;") }
+                                p.skipTag()
+                            }
+                            "style:graphic-properties", "style:drawing-page-properties" -> {
+                                if (p.a("draw:fill") == "solid") p.a("draw:fill-color")?.let { sb.append("background:$it;") }
+                                if (p.a("draw:stroke").let { it != null && it != "none" }) p.a("svg:stroke-color")?.let { sb.append("border:1pt solid $it;") }
+                                if (p.a("draw:textarea-vertical-align") == "middle") sb.append("justify-content:center;")
+                                if (p.a("draw:textarea-vertical-align") == "bottom") sb.append("justify-content:flex-end;")
+                                p.skipTag()
+                            }
+                            "style:table-cell-properties" -> {
+                                p.a("fo:background-color")?.takeIf { it != "transparent" }?.let { sb.append("background:$it;") }
+                                p.skipTag()
+                            }
+                            else -> p.skipTag()
+                        }
+                    })
+                    o.css[name] = sb.toString()
+                }
+                "text:list-style" -> {
+                    val name = p.a("style:name") ?: continue
+                    p.children({ n -> if (n == "text:list-level-style-number" && p.a("text:level") == "1") o.numbered += name; p.skipTag() })
+                }
+            }
+        }
+    }
+
+    /** Paragraf ichidagi matn va qatorli elementlar. */
+    private fun odfInline(p: XmlPullParser, o: Odf, out: StringBuilder) {
+        p.children({ n ->
+            when (n) {
+                "text:span" -> {
+                    val st = o.style(p.a("text:style-name"))
+                    out.append(if (st.isEmpty()) "<span>" else "<span style=\"$st\">")
+                    odfInline(p, o, out)
+                    out.append("</span>")
+                }
+                "text:a" -> { out.append("<a>"); odfInline(p, o, out); out.append("</a>") }
+                "text:s" -> { val c = p.a("text:c")?.toIntOrNull() ?: 1; repeat(c.coerceIn(1, 200)) { out.append("&nbsp;") }; p.skipTag() }
+                "text:tab" -> { out.append("<span style=\"display:inline-block;width:36pt\"></span>"); p.skipTag() }
+                "text:line-break" -> { out.append("<br>"); p.skipTag() }
+                "draw:frame" -> out.append(odfFrameImage(p, o))
+                "text:note" -> p.children({ c -> if (c == "text:note-citation") { out.append("<sup>"); odfInline(p, o, out); out.append("</sup>") } else p.skipTag() })
+                "office:annotation", "text:bookmark", "text:bookmark-start", "text:bookmark-end", "text:soft-page-break",
+                "text:reference-mark", "text:alphabetical-index-mark" -> p.skipTag()
+                else -> odfInline(p, o, out)
+            }
+        }, { out.append(esc(it)) })
+    }
+
+    private fun odfFrameImage(p: XmlPullParser, o: Odf): String {
+        val w = odfLen(p.a("svg:width"))
+        var src: String? = null
+        val depth = p.depth
+        while (true) {
+            val ev = p.next()
+            if (ev == XmlPullParser.END_DOCUMENT || (ev == XmlPullParser.END_TAG && p.depth == depth)) break
+            if (ev == XmlPullParser.START_TAG && p.name == "draw:image" && src == null) src = p.a("xlink:href")?.let { image(o.files, it.removePrefix("./")) }
+        }
+        return src?.let { "<img src=\"$it\" style=\"${w?.let { v -> "width:${fmt(v)}pt;" } ?: ""}max-width:100%;height:auto;vertical-align:middle\">" } ?: ""
+    }
+
+    /** Blok elementlar (paragraf, sarlavha, ro'yxat, jadval, bo'lim). */
+    private fun odfBlocks(p: XmlPullParser, o: Odf, out: StringBuilder, depth: Int = 0, defCss: String = "") {
+        p.children({ n ->
+            when (n) {
+                "text:p", "text:h" -> {
+                    val st = defCss + o.style(p.a("text:style-name"))
+                    val tag = if (n == "text:h") "h${(p.a("text:outline-level")?.toIntOrNull() ?: 1).coerceIn(1, 6)}" else "p"
+                    val inner = StringBuilder()
+                    odfInline(p, o, inner)
+                    out.append("<$tag${if (st.isEmpty()) "" else " style=\"$st\""}>").append(if (inner.isEmpty()) "<br>" else inner).append("</$tag>")
+                }
+                "text:list" -> {
+                    if (depth > 20) { p.skipTag(); return@children }
+                    val ol = p.a("text:style-name") in o.numbered
+                    out.append(if (ol) "<ol>" else "<ul>")
+                    p.children({ c ->
+                        if (c == "text:list-item" || c == "text:list-header") { out.append("<li>"); odfBlocks(p, o, out, depth + 1, defCss); out.append("</li>") } else p.skipTag()
+                    })
+                    out.append(if (ol) "</ol>" else "</ul>")
+                }
+                "table:table" -> {
+                    if (depth > 8) { p.skipTag(); return@children }
+                    out.append("<div style=\"overflow-x:auto\"><table class=\"t\">")
+                    fun rows() {
+                        p.children({ r ->
+                            when (r) {
+                                "table:table-row" -> {
+                                    out.append("<tr>")
+                                    p.children({ c ->
+                                        if (c == "table:table-cell") {
+                                            val span = p.a("table:number-columns-spanned")?.toIntOrNull() ?: 1
+                                            val st = o.style(p.a("table:style-name"))
+                                            out.append("<td${if (span > 1) " colspan=\"$span\"" else ""}${if (st.isEmpty()) "" else " style=\"$st\""}>")
+                                            odfBlocks(p, o, out, depth + 1)
+                                            out.append("</td>")
+                                        } else p.skipTag()
+                                    })
+                                    out.append("</tr>")
+                                }
+                                "table:table-header-rows", "table:table-rows", "table:table-row-group" -> rows()
+                                else -> p.skipTag()
+                            }
+                        })
+                    }
+                    rows()
+                    out.append("</table></div>")
+                }
+                "text:section", "text:index-body", "text:table-of-content", "text:alphabetical-index", "text:illustration-index",
+                "text:table-index", "text:user-index", "text:bibliography", "draw:text-box" -> odfBlocks(p, o, out, depth + 1, defCss)
+                "draw:frame" -> out.append(odfFrameImage(p, o))
+                "text:soft-page-break" -> p.skipTag()
+                else -> p.skipTag()
+            }
+        })
+    }
+
+    fun odt(bytes: ByteArray, title: String): String {
+        val files = readZip(bytes.inputStream())
+        val o = Odf(files)
+        odfStyles(o, files["styles.xml"])
+        odfStyles(o, files["content.xml"])
+        var pageW = 595f
+        var pageH = 842f
+        var margin = 56f
+        files["styles.xml"]?.let { b ->
+            val p = parser(b)
+            while (p.next() != XmlPullParser.END_DOCUMENT) {
+                if (p.eventType == XmlPullParser.START_TAG && p.name == "style:page-layout-properties") {
+                    odfLen(p.a("fo:page-width"))?.let { pageW = it }
+                    odfLen(p.a("fo:page-height"))?.let { pageH = it }
+                    odfLen(p.a("fo:margin-left"))?.let { margin = it }
+                    break
+                }
+            }
+        }
+        val out = StringBuilder()
+        val p = parser(files["content.xml"] ?: throw IllegalArgumentException("not odt"))
+        while (p.next() != XmlPullParser.END_DOCUMENT) {
+            if (p.eventType == XmlPullParser.START_TAG && p.name == "office:text") { odfBlocks(p, o, out); break }
+        }
+        if (pageW !in 100f..3000f) pageW = 595f
+        if (pageH !in 100f..4000f) pageH = 842f
+        return flowPage(title, out.toString(), pageW, pageH, margin.coerceIn(0f, pageW / 3))
+    }
+
+    /** Element ichidagi butun matn (qatorlar '\n' bilan). */
+    private fun XmlPullParser.allText(): String {
+        val sb = StringBuilder()
+        children({ n ->
+            when (n) {
+                "text:s" -> { sb.append(" ".repeat((a("text:c")?.toIntOrNull() ?: 1).coerceIn(1, 100))); skipTag() }
+                "text:line-break" -> { sb.append('\n'); skipTag() }
+                "text:tab" -> { sb.append('\t'); skipTag() }
+                "text:p", "text:h" -> { if (sb.isNotEmpty()) sb.append('\n'); sb.append(allText()) }
+                "office:annotation" -> skipTag()
+                else -> sb.append(allText())
+            }
+        }, { sb.append(it) })
+        return sb.toString()
+    }
+
+    fun ods(bytes: ByteArray, title: String): String {
+        val files = readZip(bytes.inputStream())
+        val parts = ArrayList<Pair<String, String>>()
+        val p = parser(files["content.xml"] ?: throw IllegalArgumentException("not ods"))
+        while (p.next() != XmlPullParser.END_DOCUMENT) {
+            if (p.eventType != XmlPullParser.START_TAG || p.name != "table:table") continue
+            val name = p.a("table:name") ?: "Sheet${parts.size + 1}"
+            val cells = HashMap<Long, String>()
+            var row = 0
+            fun rows() {
+                p.children({ r ->
+                    when (r) {
+                        "table:table-row" -> {
+                            val rep = (p.a("table:number-rows-repeated")?.toIntOrNull() ?: 1).coerceAtLeast(1)
+                            var col = 0
+                            val rowCells = HashMap<Int, String>()
+                            p.children({ c ->
+                                if (c == "table:table-cell" || c == "table:covered-table-cell") {
+                                    val crep = (p.a("table:number-columns-repeated")?.toIntOrNull() ?: 1).coerceAtLeast(1)
+                                    val value = p.a("office:value")
+                                    val t = p.allText().ifEmpty { value ?: "" }
+                                    if (t.isNotEmpty()) for (k in 0 until minOf(crep, 50)) if (col + k < 256) rowCells[col + k] = t
+                                    col += crep
+                                } else p.skipTag()
+                            })
+                            if (rowCells.isNotEmpty()) for (k in 0 until minOf(rep, 50)) if (row + k < 10000) rowCells.forEach { (c, v) -> cells[(row + k).toLong() * 1000 + c] = v }
+                            row += rep
+                        }
+                        "table:table-header-rows", "table:table-rows", "table:table-row-group" -> rows()
+                        else -> p.skipTag()
+                    }
+                })
+            }
+            rows()
+            parts += name to gridTable(cells)
+        }
+        return sheetsPage(title, parts.ifEmpty { listOf("Sheet1" to gridTable(emptyMap())) })
+    }
+
+    fun odp(bytes: ByteArray, title: String): String {
+        val files = readZip(bytes.inputStream())
+        val o = Odf(files)
+        odfStyles(o, files["styles.xml"])
+        odfStyles(o, files["content.xml"])
+        var W = 793.7f
+        var H = 446.5f
+        files["styles.xml"]?.let { b ->
+            val p = parser(b)
+            while (p.next() != XmlPullParser.END_DOCUMENT) {
+                if (p.eventType == XmlPullParser.START_TAG && p.name == "style:page-layout-properties" && p.a("fo:page-width") != null) {
+                    odfLen(p.a("fo:page-width"))?.let { W = it }
+                    odfLen(p.a("fo:page-height"))?.let { H = it }
+                    break
+                }
+            }
+        }
+        val body = StringBuilder()
+        val thumbs = StringBuilder()
+        var i = 0
+        val p = parser(files["content.xml"] ?: throw IllegalArgumentException("not odp"))
+        fun shapes(out: StringBuilder, depth: Int) {
+            p.children({ n ->
+                when (n) {
+                    "draw:frame", "draw:custom-shape", "draw:rect", "draw:ellipse", "draw:text-box" -> {
+                        val x = odfLen(p.a("svg:x")) ?: 0f; val y = odfLen(p.a("svg:y")) ?: 0f
+                        val w = odfLen(p.a("svg:width")) ?: 100f; val h = odfLen(p.a("svg:height")) ?: 40f
+                        val cls = p.a("presentation:class")
+                        val st = o.style(p.a("presentation:style-name")) + o.style(p.a("draw:style-name"))
+                        val def = when (cls) { "title" -> "font-size:36pt;"; "subtitle" -> "font-size:24pt;"; else -> "font-size:18pt;" }
+                        val inner = StringBuilder()
+                        p.children({ c ->
+                            when (c) {
+                                "draw:text-box" -> odfBlocks(p, o, inner, 1, def)
+                                "draw:image" -> {
+                                    val src = p.a("xlink:href")?.let { image(files, it.removePrefix("./")) }
+                                    if (src != null && inner.isEmpty()) inner.append("<img src=\"$src\">")
+                                    p.skipTag()
+                                }
+                                "text:p", "text:list" -> { val one = StringBuilder(); odfBlocksOne(p, o, one, c, def); inner.append(one) }
+                                else -> p.skipTag()
+                            }
+                        })
+                        val round = if (n == "draw:ellipse") "border-radius:50%;" else ""
+                        if (inner.isNotEmpty() || st.contains("background") || st.contains("border")) out.append(
+                            "<div class=\"sp\" style=\"left:${fmt(x)}pt;top:${fmt(y)}pt;width:${fmt(w)}pt;height:${fmt(h)}pt;padding:3pt 6pt;" +
+                                (if (cls == "title") "justify-content:center;" else "") + "$round$st\">$inner</div>"
+                        )
+                    }
+                    "draw:g" -> if (depth < 10) shapes(out, depth + 1) else p.skipTag()
+                    else -> p.skipTag()
+                }
+            })
+        }
+        while (p.next() != XmlPullParser.END_DOCUMENT) {
+            if (p.eventType != XmlPullParser.START_TAG || p.name != "draw:page") continue
+            val bg = o.style(p.a("draw:style-name")).let { s -> Regex("background:([^;]+);").find(s)?.groupValues?.get(1) } ?: "#FFFFFF"
+            val inner = StringBuilder()
+            try { shapes(inner, 0) } catch (e: Exception) { }
+            body.append("<div class=\"slide-wrap\" id=\"s$i\"><div class=\"no\">${i + 1} / #N#</div><div class=\"slide\" style=\"width:${fmt(W)}pt;height:${fmt(H)}pt;background:$bg\">$inner</div></div>")
+            thumbs.append("<button onclick=\"go($i)\">${i + 1}</button>")
+            i++
+        }
+        if (i == 0) throw IllegalStateException("no slides")
+        return slidesPage(title, body.toString().replace("#N#", i.toString()), thumbs.toString(), i)
+    }
+
+    /** Joriy (text:p yoki text:list) elementni bitta blok sifatida chiqaradi. */
+    private fun odfBlocksOne(p: XmlPullParser, o: Odf, out: StringBuilder, n: String, defCss: String) {
+        if (n == "text:p") {
+            val st = defCss + o.style(p.a("text:style-name"))
+            val inner = StringBuilder()
+            odfInline(p, o, inner)
+            out.append("<p style=\"$st\">").append(if (inner.isEmpty()) "<br>" else inner).append("</p>")
+        } else {
+            out.append("<ul style=\"$defCss\">")
+            p.children({ c -> if (c == "text:list-item") { out.append("<li>"); odfBlocks(p, o, out, 2, defCss); out.append("</li>") } else p.skipTag() })
+            out.append("</ul>")
+        }
+    }
+
+    // ---------------------------------------------------------------- RTF
+
+    fun rtf(bytes: ByteArray, title: String): String = flowPage(title, Rtf(bytes, imageUri).html())
+
+    private class Rtf(val b: ByteArray, val img: (ByteArray, String) -> String?) {
+        class St(
+            var bold: Boolean = false, var ital: Boolean = false, var ul: Boolean = false, var strike: Boolean = false,
+            var fs: Int = 24, var cf: Int = 0, var hl: Int = 0, var font: Int = -1, var align: String? = null,
+            var uc: Int = 1, var dest: Int = 0, var intbl: Boolean = false, var sup: Int = 0,
+        ) {
+            fun copy() = St(bold, ital, ul, strike, fs, cf, hl, font, align, uc, dest, intbl, sup)
+        }
+
+        private val fonts = HashMap<Int, Int>()
+        private val colors = ArrayList<String?>()
+        private var cr = -1; private var cg = -1; private var cb = -1
+        private var defCp = "windows-1252"
+        private var curFont = 0
+        private val out = StringBuilder()
+        private val para = StringBuilder()
+        private var table: StringBuilder? = null
+        private var row: StringBuilder? = null
+        private var cell = StringBuilder()
+        private var pict = java.io.ByteArrayOutputStream()
+        private var pictKind: String? = null
+        private var pictW = 0
+        private var hexHi = -1
+
+        // destinatsiyalar: 0 — oddiy matn, 1 — o'tkazib yuborish, 2 — shriftlar, 3 — ranglar, 4 — rasm
+        private val skipDest = setOf(
+            "stylesheet", "info", "header", "footer", "headerl", "headerr", "headerf", "footerl", "footerr", "footerf", "footnote",
+            "fldinst", "themedata", "colorschememapping", "latentstyles", "datastore", "xmlnstbl", "listtable", "listoverridetable",
+            "rsidtbl", "generator", "pgdsctbl", "mmathPr", "bkmkstart", "bkmkend", "nonshppict", "object", "annotation", "atnid",
+            "atnauthor", "comment", "filetbl", "revtbl", "userprops", "docvar", "template", "ftnsep", "ftnsepc", "aftnsep", "pnseclvl",
+            "listtext", "pntext", "pntxta", "pntxtb", "sp", "sn", "sv", "xe", "tc", "objdata", "wgrffmtfilter", "mhtmltag",
+        )
+
+        private fun cp(st: St): String {
+            val cs = fonts[if (st.font >= 0) st.font else 0]
+            return when (cs) {
+                204 -> "windows-1251"; 238 -> "windows-1250"; 161 -> "windows-1253"; 162 -> "windows-1254"; 177 -> "windows-1255"
+                178 -> "windows-1256"; 186 -> "windows-1257"; 163 -> "windows-1258"; 222 -> "windows-874"
+                else -> defCp
+            }
+        }
+
+        private fun color(i: Int) = colors.getOrNull(i)
+
+        private fun css(st: St): String {
+            val sb = StringBuilder()
+            if (st.bold) sb.append("font-weight:bold;")
+            if (st.ital) sb.append("font-style:italic;")
+            val d = listOfNotNull(if (st.ul) "underline" else null, if (st.strike) "line-through" else null)
+            if (d.isNotEmpty()) sb.append("text-decoration:${d.joinToString(" ")};")
+            if (st.fs != 24 && st.fs > 0) sb.append("font-size:${st.fs / 2f}pt;")
+            color(st.cf)?.let { sb.append("color:#$it;") }
+            if (st.hl > 0) color(st.hl)?.let { sb.append("background:#$it;") }
+            if (st.sup == 1) sb.append("vertical-align:super;font-size:smaller;") else if (st.sup == -1) sb.append("vertical-align:sub;font-size:smaller;")
+            return sb.toString()
+        }
+
+        private fun text(st: St, s: String) {
+            if (s.isEmpty()) return
+            val c = css(st)
+            val e = HtmlRenderer.escStatic(s)
+            if (c.isEmpty()) para.append(e) else para.append("<span style=\"").append(c).append("\">").append(e).append("</span>")
+        }
+
+        private fun endPara(st: St) {
+            val body = if (para.isEmpty()) "<br>" else para.toString()
+            para.setLength(0)
+            if (st.intbl) { if (cell.isNotEmpty()) cell.append("<br>"); cell.append(body); return }
+            closeTable()
+            out.append("<p${st.align?.let { " style=\"text-align:$it\"" } ?: ""}>").append(body).append("</p>")
+        }
+
+        private fun closeTable() {
+            table?.let { t -> row?.let { if (it.isNotEmpty()) t.append("<tr>").append(it).append("</tr>") }; out.append(t).append("</table>") }
+            table = null; row = null
+        }
+
+        fun html(): String {
+            val stack = ArrayList<St>()
+            var st = St()
+            var i = 0
+            val n = b.size
+            val pending = java.io.ByteArrayOutputStream()
+            var skipChars = 0
+            fun flush() {
+                if (pending.size() > 0) {
+                    val s = try { String(pending.toByteArray(), charset(cp(st))) } catch (_: Exception) { String(pending.toByteArray(), Charsets.ISO_8859_1) }
+                    pending.reset()
+                    when (st.dest) {
+                        0 -> text(st, s)
+                        3 -> if (s.contains(';')) { s.forEach { ch -> if (ch == ';') { colors += if (cr < 0) null else String.format("%02X%02X%02X", cr, cg, cb); cr = -1; cg = -1; cb = -1 } } }
+                    }
+                }
+            }
+            fun byte(v: Int) {
+                if (skipChars > 0) { skipChars--; return }
+                when (st.dest) {
+                    0, 3 -> pending.write(v)
+                    4 -> {
+                        val h = Character.digit(v, 16)
+                        if (h >= 0) { if (hexHi < 0) hexHi = h else { pict.write(hexHi * 16 + h); hexHi = -1 } }
+                    }
+                }
+            }
+            var guard = 0
+            while (i < n && guard++ < 50_000_000) {
+                val c = b[i].toInt() and 0xFF
+                when (c) {
+                    '{'.code -> {
+                        flush(); stack += st; st = st.copy(); i++
+                        if (i + 1 < n && b[i].toInt() == '\\'.code && b[i + 1].toInt() == '*'.code) {
+                            // e'tiborsiz qoldirsa bo'ladigan destinatsiya: noma'lum bo'lsa — o'tkazamiz
+                            var j = i + 2
+                            while (j < n && (b[j].toInt() == ' '.code || b[j].toInt() == '\r'.code || b[j].toInt() == '\n'.code)) j++
+                            val w = StringBuilder()
+                            if (j < n && b[j].toInt() == '\\'.code) { j++; while (j < n && Character.isLetter(b[j].toInt())) { w.append(b[j].toInt().toChar()); j++ } }
+                            if (w.toString() !in setOf("shppict", "fldrslt")) st.dest = 1
+                            i += 2
+                        }
+                    }
+                    '}'.code -> {
+                        flush()
+                        if (st.dest == 4 && (stack.lastOrNull()?.dest ?: 0) != 4) {
+                            val k = pictKind
+                            if (k != null && pict.size() > 0) img(pict.toByteArray(), "p.$k")?.let { src ->
+                                para.append("<img src=\"$src\"${if (pictW > 0) " style=\"width:${pictW / 20f}pt\"" else ""}>")
+                            }
+                            pict.reset(); pictKind = null; pictW = 0; hexHi = -1
+                        }
+                        st = if (stack.isNotEmpty()) stack.removeAt(stack.size - 1) else St()
+                        i++
+                    }
+                    '\\'.code -> {
+                        i++
+                        if (i >= n) break
+                        val c2 = b[i].toInt() and 0xFF
+                        if (Character.isLetter(c2)) {
+                            val w = StringBuilder()
+                            while (i < n && Character.isLetter(b[i].toInt() and 0xFF) && w.length < 32) { w.append((b[i].toInt() and 0xFF).toChar()); i++ }
+                            var param: Int? = null
+                            if (i < n && (b[i].toInt() == '-'.code || Character.isDigit(b[i].toInt() and 0xFF))) {
+                                val s0 = i
+                                i++
+                                while (i < n && Character.isDigit(b[i].toInt() and 0xFF) && i - s0 < 11) i++
+                                param = String(b, s0, i - s0, Charsets.ISO_8859_1).toIntOrNull()
+                            }
+                            if (i < n && b[i].toInt() == ' '.code) i++
+                            val word = w.toString()
+                            if (word == "bin" && param != null) { i += param.coerceAtLeast(0); continue }
+                            if (skipChars > 0 && st.dest == 0) { skipChars--; continue }
+                            flush()
+                            when (word) {
+                                "ansicpg" -> param?.let { defCp = if (it == 0) defCp else "windows-$it" }
+                                "fonttbl" -> st.dest = 2
+                                "colortbl" -> { st.dest = 3; colors.clear() }
+                                "pict" -> st.dest = 4
+                                "pngblip" -> pictKind = "png"
+                                "jpegblip" -> pictKind = "jpg"
+                                "picwgoal" -> pictW = param ?: 0
+                                "f" -> if (st.dest == 2) curFont = param ?: 0 else st.font = param ?: 0
+                                "fcharset" -> if (st.dest == 2) fonts[curFont] = param ?: 0
+                                "red" -> cr = param ?: 0
+                                "green" -> cg = param ?: 0
+                                "blue" -> cb = param ?: 0
+                                "plain" -> { st.bold = false; st.ital = false; st.ul = false; st.strike = false; st.fs = 24; st.cf = 0; st.hl = 0; st.sup = 0 }
+                                "b" -> st.bold = param != 0
+                                "i" -> st.ital = param != 0
+                                "ul" -> st.ul = param != 0
+                                "uld", "uldb", "ulw", "ulwave", "uldash" -> st.ul = true
+                                "ulnone" -> st.ul = false
+                                "strike", "striked" -> st.strike = param != 0
+                                "fs" -> st.fs = param ?: 24
+                                "cf" -> st.cf = param ?: 0
+                                "highlight", "cb", "chcbpat" -> st.hl = param ?: 0
+                                "super" -> st.sup = 1
+                                "sub" -> st.sup = -1
+                                "nosupersub" -> st.sup = 0
+                                "ql" -> st.align = null
+                                "qc" -> st.align = "center"
+                                "qr" -> st.align = "right"
+                                "qj" -> st.align = "justify"
+                                "pard" -> { st.align = null; st.intbl = false }
+                                "intbl" -> st.intbl = true
+                                "uc" -> st.uc = param ?: 1
+                                "u" -> if (st.dest == 0) {
+                                    var v = param ?: 0
+                                    if (v < 0) v += 65536
+                                    text(st, v.toChar().toString())
+                                    skipChars = st.uc
+                                }
+                                "par", "sect" -> if (st.dest == 0) endPara(st)
+                                "line" -> if (st.dest == 0) para.append("<br>")
+                                "tab" -> if (st.dest == 0) para.append("<span style=\"display:inline-block;width:36pt\"></span>")
+                                "page" -> if (st.dest == 0) { endPara(st); out.append("<div class=\"pb\" data-brk=\"after\"></div>") }
+                                "cell", "nestcell" -> if (st.dest == 0) {
+                                    if (para.isNotEmpty()) { if (cell.isNotEmpty()) cell.append("<br>"); cell.append(para); para.setLength(0) }
+                                    if (table == null) table = StringBuilder("<table class=\"t\">")
+                                    if (row == null) row = StringBuilder()
+                                    row!!.append("<td>").append(cell).append("</td>")
+                                    cell = StringBuilder()
+                                }
+                                "row", "nestrow" -> if (st.dest == 0) {
+                                    if (table == null) table = StringBuilder("<table class=\"t\">")
+                                    row?.let { table!!.append("<tr>").append(it).append("</tr>") }
+                                    row = null
+                                }
+                                "emdash" -> text(st, "—")
+                                "endash" -> text(st, "–")
+                                "bullet" -> text(st, "•")
+                                "lquote" -> text(st, "‘")
+                                "rquote" -> text(st, "’")
+                                "ldblquote" -> text(st, "“")
+                                "rdblquote" -> text(st, "”")
+                                else -> if (word in skipDest) st.dest = 1
+                            }
+                        } else {
+                            i++
+                            when (c2) {
+                                '\''.code -> {
+                                    if (i + 2 <= n) {
+                                        val v = String(b, i, 2, Charsets.ISO_8859_1).toIntOrNull(16)
+                                        i += 2
+                                        if (v != null) byte(v)
+                                    }
+                                }
+                                '\\'.code, '{'.code, '}'.code -> byte(c2)
+                                '~'.code -> { flush(); if (st.dest == 0) text(st, "\u00a0") }
+                                '_'.code -> { flush(); if (st.dest == 0) text(st, "‑") }
+                                '\n'.code, '\r'.code -> { flush(); if (st.dest == 0) endPara(st) }
+                                else -> {}
+                            }
+                        }
+                    }
+                    '\r'.code, '\n'.code -> i++
+                    else -> { byte(c); i++ }
+                }
+            }
+            flush()
+            if (para.isNotEmpty()) endPara(st)
+            closeTable()
+            return out.toString()
+        }
+    }
+
+    // ---------------------------------------------------------------- EPUB, HTML, rasm
+
+    private fun sanitize(h: String): String = h
+        .replace(Regex("(?is)<script\\b.*?</script\\s*>"), "")
+        .replace(Regex("(?is)<(iframe|object|embed|frameset|frame|applet|form)\\b.*?(</\\1\\s*>|/?>)"), "")
+        .replace(Regex("(?is)<(meta|base|link)\\b[^>]*>"), "")
+        .replace(Regex("(?i)\\son[a-z]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)"), "")
+        .replace(Regex("(?i)(href|src|xlink:href)\\s*=\\s*([\"'])\\s*(javascript|vbscript|data:text/html)[^\"']*\\2"), "$1=\"#\"")
+
+    fun epub(bytes: ByteArray, title: String): String {
+        val files = readZip(bytes.inputStream())
+        val container = files["META-INF/container.xml"]?.let { String(it, Charsets.UTF_8) } ?: throw IllegalArgumentException("not epub")
+        val opfPath = Regex("full-path\\s*=\\s*\"([^\"]+)\"").find(container)?.groupValues?.get(1) ?: throw IllegalArgumentException("no opf")
+        val opfDir = opfPath.substringBeforeLast('/', "")
+        val manifest = HashMap<String, String>()
+        val spine = ArrayList<String>()
+        val p = parser(files[opfPath] ?: throw IllegalArgumentException("no opf"))
+        while (p.next() != XmlPullParser.END_DOCUMENT) {
+            if (p.eventType != XmlPullParser.START_TAG) continue
+            when (p.name.substringAfter(':')) {
+                "item" -> { val id = p.a("id"); val href = p.a("href"); if (id != null && href != null) manifest[id] = href }
+                "itemref" -> p.a("idref")?.let { spine += it }
+            }
+        }
+        val sb = StringBuilder()
+        for (id in spine) {
+            val href = manifest[id] ?: continue
+            val path = resolve(opfDir, java.net.URLDecoder.decode(href.substringBefore('#'), "UTF-8"))
+            val raw = files[path] ?: continue
+            val html = decodeText(raw)
+            var bodyHtml = Regex("(?is)<body[^>]*>(.*)</body>").find(html)?.groupValues?.get(1) ?: html
+            bodyHtml = sanitize(bodyHtml)
+            val dir = path.substringBeforeLast('/', "")
+            bodyHtml = Regex("(?i)(src|xlink:href)\\s*=\\s*\"([^\"]+)\"").replace(bodyHtml) { m ->
+                val target = m.groupValues[2]
+                if (target.startsWith("data:") || target.startsWith("#")) m.value
+                else image(files, resolve(dir, java.net.URLDecoder.decode(target, "UTF-8")))?.let { "${m.groupValues[1]}=\"$it\"" } ?: "${m.groupValues[1]}=\"\""
+            }
+            sb.append("<section class=\"ch\">").append(bodyHtml).append("</section>")
+        }
+        val css = """
+body{background:#F3EFE6}
+.book{max-width:760px;margin:0 auto;padding:20px 20px 60px;background:#fff;font:17px/1.65 Georgia,'Noto Serif',serif;color:#222;box-shadow:0 0 18px rgba(0,0,0,.08)}
+.book img,.book svg{max-width:100%;height:auto}
+.ch{border-bottom:1px solid #eee;padding:8px 0 28px;margin-bottom:12px}
+.ch a{color:inherit;text-decoration:none}
+"""
+        return page(title, css, "<div class=\"book\">$sb</div>", "", "epub")
+    }
+
+    fun foreignHtml(bytes: ByteArray, title: String): String {
+        val head = String(bytes, 0, minOf(bytes.size, 2048), Charsets.ISO_8859_1)
+        val cs = Regex("(?i)charset\\s*=\\s*[\"']?([\\w-]+)").find(head)?.groupValues?.get(1)
+        val text = cs?.let { c -> try { String(bytes, charset(c)) } catch (_: Exception) { null } } ?: decodeText(bytes)
+        var h = sanitize(text)
+        val vp = "<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=8\"><style>img{max-width:100%;height:auto}</style>"
+        val m = Regex("(?i)<head[^>]*>").find(h)
+        h = if (m != null) h.substring(0, m.range.last + 1) + vp + h.substring(m.range.last + 1) else vp + h
+        return h
+    }
+
+    fun imagePage(bytes: ByteArray, title: String): String {
+        val src = imageUri(bytes, title) ?: throw IllegalArgumentException("image")
+        val css = "body{background:#16181D}.iv{min-height:100vh;display:flex;align-items:center;justify-content:center}.iv img{max-width:100%;height:auto;display:block}"
+        return page(title, css, "<div class=\"iv\"><img src=\"$src\"></div>", "", "image")
+    }
+
     companion object {
         val PPTX_TAGS = listOf("a:p", "a:r", "a:fld", "p:sp", "p:pic", "p:graphicFrame", "p:grpSp", "p:cxnSp")
         val DOCX_TAGS = listOf("w:p", "w:r")
+
+        fun escStatic(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+        /** Matn kodlashini aniqlaydi: BOM, UTF-8 (qat'iy), aks holda Windows-1251. */
+        fun decodeText(b: ByteArray): String {
+            if (b.size >= 3 && b[0] == 0xEF.toByte() && b[1] == 0xBB.toByte() && b[2] == 0xBF.toByte()) return String(b, 3, b.size - 3, Charsets.UTF_8)
+            if (b.size >= 2 && b[0] == 0xFF.toByte() && b[1] == 0xFE.toByte()) return String(b, 2, b.size - 2, Charsets.UTF_16LE)
+            if (b.size >= 2 && b[0] == 0xFE.toByte() && b[1] == 0xFF.toByte()) return String(b, 2, b.size - 2, Charsets.UTF_16BE)
+            return try {
+                Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(b)).toString()
+            } catch (_: Exception) {
+                String(b, charset("windows-1251"))
+            }
+        }
 
         fun fmt(f: Float): String {
             val r = (f * 10).roundToInt() / 10f
