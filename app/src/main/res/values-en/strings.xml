@@ -523,4 +523,6 @@
     <string name="info_location">Location</string>
     <string name="folder">Folder</string>
     <string name="op_failed">Operation failed</string>
+    <string name="print_fallback">Direct PDF failed — choose “Save as PDF” in the print dialog</string>
+    <string name="pdf_convert_hint">Could not create PDF. Open the file and use ⋮ → “Print / PDF”.</string>
 </resources>

@@ -80,9 +80,15 @@ table.x th{position:static!important}
                                     .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
                                     .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                                     .build()
-                                PdfPrint(attrs).print(wv.createPrintDocumentAdapter("QulayOfis"), out) { res ->
-                                    wv.destroy()
-                                    if (cont.isActive) cont.resume(res)
+                                try {
+                                    PdfPrint(attrs).print(wv.createPrintDocumentAdapter("QulayOfis"), out) { res ->
+                                        wv.destroy()
+                                        if (cont.isActive) cont.resume(res)
+                                    }
+                                } catch (e: Throwable) {
+                                    // ba'zi qurilmalarda yashirin API cheklovi — chaqiruvchi tizim oynasiga o'tadi
+                                    try { wv.destroy() } catch (_: Exception) {}
+                                    if (cont.isActive) cont.resume(false)
                                 }
                             }, 700)
                         }

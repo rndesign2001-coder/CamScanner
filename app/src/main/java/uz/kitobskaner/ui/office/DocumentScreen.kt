@@ -275,6 +275,7 @@ fun DocumentScreen(
     val needCellMsg = stringResource(R.string.need_cell)
     val copiedMsg = stringResource(R.string.copied)
     val convertFailed = stringResource(R.string.convert_failed)
+    val printFallbackMsg = stringResource(R.string.print_fallback)
     val lastSheetMsg = stringResource(R.string.last_sheet)
     val copiedFmt = stringResource(R.string.copied_n)
     val shownFmt = stringResource(R.string.shown_rows)
@@ -548,7 +549,14 @@ fun DocumentScreen(
                     "docx" -> OfficeConvert.toDocx(context, b, kind, base, out)
                     else -> OfficeConvert.toXlsx(b, kind, out)
                 }
-                if (ok) { ex.refreshFiles(); onOpenFile(out) } else { out.delete(); toast(context, convertFailed) }
+                if (ok) { ex.refreshFiles(); onOpenFile(out) } else {
+                    out.delete()
+                    if (target == "pdf" && htmlFile != null) {
+                        // zaxira: tizimning chop etish oynasi ("PDF sifatida saqlash")
+                        toast(context, printFallbackMsg)
+                        web.print(context, base)
+                    } else toast(context, convertFailed)
+                }
             } catch (e: Throwable) {
                 toast(context, convertFailed + ": " + (e.message ?: e.javaClass.simpleName))
             } finally {

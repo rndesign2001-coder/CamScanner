@@ -524,4 +524,6 @@
     <string name="info_location">Joylashuv</string>
     <string name="folder">Papka</string>
     <string name="op_failed">Amal bajarilmadi</string>
+    <string name="print_fallback">To‘g‘ridan-to‘g‘ri PDF yozib bo‘lmadi — chop etish oynasida “PDF sifatida saqlash”ni tanlang</string>
+    <string name="pdf_convert_hint">PDF yaratib bo‘lmadi. Faylni oching va ⋮ → “Chop etish / PDF” orqali saqlang.</string>
 </resources>

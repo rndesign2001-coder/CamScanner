@@ -76,6 +76,7 @@ fun FileConvertScreen(onBack: () -> Unit, onDone: (File) -> Unit, onPdfConvert: 
     var busy by remember { mutableStateOf(false) }
     val errMsg = stringResource(R.string.convert_failed)
     val tooBig = stringResource(R.string.err_too_large)
+    val pdfHint = stringResource(R.string.pdf_convert_hint)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u == null) return@rememberLauncherForActivityResult
         uri = u; name = PdfTools.displayName(context, u); fmt = null; bytes = null
@@ -109,7 +110,7 @@ fun FileConvertScreen(onBack: () -> Unit, onDone: (File) -> Unit, onPdfConvert: 
                     "xlsx" -> OfficeConvert.toXlsx(b, f, out)
                     else -> false
                 }
-                if (ok) { ex.refreshFiles(); onDone(out) } else { out.delete(); toast(context, errMsg) }
+                if (ok) { ex.refreshFiles(); onDone(out) } else { out.delete(); toast(context, if (target == "pdf") pdfHint else errMsg) }
             } catch (e: Throwable) {
                 toast(context, errMsg + ": " + (e.message ?: e.javaClass.simpleName))
             } finally {

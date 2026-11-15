@@ -523,4 +523,6 @@
     <string name="info_location">Расположение</string>
     <string name="folder">Папка</string>
     <string name="op_failed">Операция не выполнена</string>
+    <string name="print_fallback">Не удалось сохранить напрямую — выберите «Сохранить как PDF» в окне печати</string>
+    <string name="pdf_convert_hint">Не удалось создать PDF. Откройте файл и сохраните через ⋮ → «Печать / PDF».</string>
 </resources>
