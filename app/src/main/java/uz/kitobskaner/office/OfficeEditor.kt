@@ -968,6 +968,7 @@ object OfficeEditor {
         var maxId = 255L
         list.forEach { it.sldId.getAttribute("id").toLongOrNull()?.let { v -> if (v > maxId) maxId = v } }
         val newId = (maxId + 1).toString()
+        ensureNs(pres.documentElement, "xmlns:r" to R_NS)
         val el = pres.createElement("p:sldId")
         el.setAttribute("id", newId)
         el.setAttribute("r:id", rid)
@@ -1043,78 +1044,667 @@ object OfficeEditor {
         return n
     }
 
+    private class SheetRef(val el: Element, val name: String, val path: String)
+
+    private fun sheetRefs(pkg: Pkg): List<SheetRef> {
+        val wb = pkg.doc("xl/workbook.xml") ?: return emptyList()
+        val r = rels(pkg, "xl/workbook.xml")
+        val out = ArrayList<SheetRef>()
+        val nl = wb.getElementsByTagName("sheet")
+        for (i in 0 until nl.length) {
+            val e = nl.item(i) as Element
+            r[e.getAttribute("r:id")]?.let { out += SheetRef(e, e.getAttribute("name"), it) }
+        }
+        return out
+    }
+
+    private fun colName(i: Int): String {
+        var n = i + 1
+        val sb = StringBuilder()
+        while (n > 0) { val m = (n - 1) % 26; sb.insert(0, 'A' + m); n = (n - 1) / 26 }
+        return sb.toString()
+    }
+
+    /** "B12" → (11, 1) — 0 asosli qator va ustun. */
+    private fun cellRC(ref: String): Pair<Int, Int>? {
+        val m = Regex("\\$?([A-Za-z]{1,3})\\$?(\\d+)").matchEntire(ref.trim()) ?: return null
+        return (m.groupValues[2].toInt() - 1) to (colIndex(m.groupValues[1]) - 1)
+    }
+
+    private val refRe = Regex("(\"(?:[^\"]|\"\")*\")|((?:'[^']+'|[A-Za-z_][\\w.]*)!)?(\\$?)([A-Za-z]{1,3})(\\$?)(\\d+)(?![\\w(])")
+
+    /**
+     * Formula ichidagi katak havolalarini o'zgartiradi. [own] — formula shu varaqdami;
+     * [sheet] — o'zgarayotgan varaq nomi. [tr] (qator, ustun, $qator, $ustun) → yangi (qator, ustun).
+     */
+    private fun mapRefs(f: String, sheet: String?, own: Boolean, tr: (Int, Int, Boolean, Boolean) -> Pair<Int, Int>): String =
+        refRe.replace(f) { m ->
+            if (m.groupValues[1].isNotEmpty()) return@replace m.value
+            val start = m.range.first
+            if (start > 0 && (f[start - 1].isLetterOrDigit() || f[start - 1] == '_' || f[start - 1] == '.')) return@replace m.value
+            val pre = m.groupValues[2]
+            val applies = if (pre.isEmpty()) own else sheet != null && pre.removeSuffix("!").trim('\'').equals(sheet, true)
+            if (!applies) return@replace m.value
+            val absC = m.groupValues[3].isNotEmpty(); val absR = m.groupValues[5].isNotEmpty()
+            val r = m.groupValues[6].toInt() - 1; val c = colIndex(m.groupValues[4]) - 1
+            val (nr, nc) = tr(r, c, absR, absC)
+            pre + m.groupValues[3] + colName(nc.coerceAtLeast(0)) + m.groupValues[5] + (nr.coerceAtLeast(0) + 1)
+        }
+
+    private fun translateF(f: String, dr: Int, dc: Int) = mapRefs(f, null, true) { r, c, ar, ac -> (if (ar) r else r + dr) to (if (ac) c else c + dc) }
+
+    /** Umumiy (shared) formulalar guruhini oddiy formulalarga aylantiradi. */
+    private fun unshare(d: Document, si: String) {
+        val fs = d.getElementsByTagName("f")
+        var master: Element? = null
+        val list = ArrayList<Element>()
+        for (i in 0 until fs.length) {
+            val f = fs.item(i) as Element
+            if (f.getAttribute("t") == "shared" && f.getAttribute("si") == si) { list += f; if (f.textContent.isNotEmpty() && master == null) master = f }
+        }
+        val m = master ?: return
+        val mc = cellRC((m.parentNode as Element).getAttribute("r")) ?: return
+        val text = m.textContent
+        for (f in list) {
+            val rc = cellRC((f.parentNode as Element).getAttribute("r")) ?: continue
+            if (f !== m) f.textContent = translateF(text, rc.first - mc.first, rc.second - mc.second)
+            f.removeAttribute("t"); f.removeAttribute("si"); f.removeAttribute("ref")
+        }
+    }
+
+    // ---------------------------------------------------------------- XLSX: uslublar
+
+    private class Styles(val d: Document) {
+        val cache = HashMap<String, Int>()
+    }
+
+    private fun Element.countUpdate() { setAttribute("count", kids().size.toString()) }
+
+    private val fontOrder = listOf("b", "i", "strike", "condense", "extend", "outline", "shadow", "u", "vertAlign", "sz", "color", "name", "family", "charset", "scheme")
+
+    private fun xfFor(st: Styles, base: Int, fmt: JsonObject): Int {
+        val key = "$base|$fmt"
+        st.cache[key]?.let { return it }
+        val d = st.d
+        val root = d.documentElement
+        val cellXfs = d.getElementsByTagName("cellXfs").item(0) as? Element ?: return base
+        val xfs = cellXfs.kids().filter { it.tagName == "xf" }
+        val xf = (xfs.getOrNull(base) ?: xfs.firstOrNull() ?: return base).cloneNode(true) as Element
+        // shrift
+        if (fmt.has("b") || fmt.has("i") || fmt.str("c") != null) {
+            val fonts = d.getElementsByTagName("fonts").item(0) as? Element
+            if (fonts != null) {
+                val list = fonts.kids()
+                val f = (list.getOrNull(xf.getAttribute("fontId").toIntOrNull() ?: 0) ?: list.firstOrNull())?.cloneNode(true) as? Element ?: d.createElement("font")
+                fmt.bool("b")?.let { on -> f.setOrdered("b", fontOrder, if (on) emptyMap() else null) }
+                fmt.bool("i")?.let { on -> f.setOrdered("i", fontOrder, if (on) emptyMap() else null) }
+                fmt.str("c")?.let { c -> f.setOrdered("color", fontOrder, mapOf("rgb" to "FF" + c.removePrefix("#").uppercase())) }
+                fonts.appendChild(f)
+                fonts.countUpdate()
+                xf.setAttribute("fontId", (fonts.kids().size - 1).toString())
+                xf.setAttribute("applyFont", "1")
+            }
+        }
+        fmt.str("bg")?.let { bg ->
+            val fills = d.getElementsByTagName("fills").item(0) as? Element
+            if (fills != null) {
+                if (bg == "none") xf.setAttribute("fillId", "0") else {
+                    val fill = fragment(d, """<fill><patternFill patternType="solid"><fgColor rgb="FF${bg.removePrefix("#").uppercase()}"/><bgColor indexed="64"/></patternFill></fill>""")
+                    fills.appendChild(fill)
+                    fills.countUpdate()
+                    xf.setAttribute("fillId", (fills.kids().size - 1).toString())
+                }
+                xf.setAttribute("applyFill", "1")
+            }
+        }
+        fmt.bool("bd")?.let { on ->
+            val borders = d.getElementsByTagName("borders").item(0) as? Element
+            if (borders != null) {
+                if (!on) xf.setAttribute("borderId", "0") else {
+                    val b = fragment(d, """<border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border>""")
+                    borders.appendChild(b)
+                    borders.countUpdate()
+                    xf.setAttribute("borderId", (borders.kids().size - 1).toString())
+                }
+                xf.setAttribute("applyBorder", "1")
+            }
+        }
+        fmt.str("al")?.let { al ->
+            val a = xf.child("alignment") ?: d.createElement("alignment").also { xf.insertBefore(it, xf.firstChild) }
+            a.setAttribute("horizontal", when (al) { "center" -> "center"; "right" -> "right"; "justify" -> "justify"; else -> "left" })
+            xf.setAttribute("applyAlignment", "1")
+        }
+        fmt.str("nf")?.let { nf ->
+            val id = when (nf) {
+                "gen" -> 0; "int" -> 3; "num2" -> 4; "pct" -> 10
+                "date" -> customNumFmt(d, root, "dd.mm.yyyy")
+                "cur" -> customNumFmt(d, root, "#,##0.00\\ \"so'm\"")
+                else -> null
+            }
+            if (id != null) { xf.setAttribute("numFmtId", id.toString()); xf.setAttribute("applyNumberFormat", "1") }
+        }
+        cellXfs.appendChild(xf)
+        cellXfs.countUpdate()
+        val idx = cellXfs.kids().size - 1
+        st.cache[key] = idx
+        return idx
+    }
+
+    private fun customNumFmt(d: Document, root: Element, code: String): Int {
+        val nf = root.child("numFmts") ?: d.createElement("numFmts").also { root.insertBefore(it, root.firstChild) }
+        var max = 163
+        for (e in nf.kids()) {
+            val id = e.getAttribute("numFmtId").toIntOrNull() ?: continue
+            if (e.getAttribute("formatCode") == code) return id
+            if (id > max) max = id
+        }
+        val e = d.createElement("numFmt")
+        e.setAttribute("numFmtId", (max + 1).toString()); e.setAttribute("formatCode", code)
+        nf.appendChild(e)
+        nf.countUpdate()
+        return max + 1
+    }
+
+    // ---------------------------------------------------------------- XLSX: kataklarni yozish
+
+    private fun findCell(d: Document, ref: String, create: Boolean): Element? {
+        val data = d.getElementsByTagName("sheetData").item(0) as? Element ?: return null
+        val rowNum = ref.dropWhile { it.isLetter() }.toIntOrNull() ?: return null
+        val col = colIndex(ref)
+        var row: Element? = null
+        var before: Element? = null
+        for (r in data.kids()) {
+            if (r.tagName != "row") continue
+            val rn = r.getAttribute("r").toIntOrNull() ?: continue
+            if (rn == rowNum) { row = r; break }
+            if (rn > rowNum) { before = r; break }
+        }
+        if (row == null) {
+            if (!create) return null
+            row = d.createElement("row").also { it.setAttribute("r", rowNum.toString()) }
+            if (before != null) data.insertBefore(row, before) else data.appendChild(row)
+        }
+        row!!.removeAttribute("spans")
+        var cb: Element? = null
+        for (c in row.kids()) {
+            if (c.tagName != "c") continue
+            val ci = colIndex(c.getAttribute("r"))
+            if (ci == col) return c
+            if (ci > col) { cb = c; break }
+        }
+        if (!create) return null
+        val cell = d.createElement("c").also { it.setAttribute("r", ref) }
+        // qator uslubi bo'lsa — katakka ham
+        if (row.getAttribute("customFormat") == "1") row.getAttribute("s").takeIf { it.isNotEmpty() }?.let { cell.setAttribute("s", it) }
+        if (cb != null) row.insertBefore(cell, cb) else {
+            val ext = row.child("extLst")
+            if (ext != null) row.insertBefore(cell, ext) else row.appendChild(cell)
+        }
+        return cell
+    }
+
     private fun xlsx(pkg: Pkg, root: JsonObject) {
         val list = root["cells"] as? JsonArray ?: return
         val paths = sheetPaths(pkg)
-        var droppedFormula = false
+        var touchedFormula = false
+        val styles = pkg.doc("xl/styles.xml")?.let { Styles(it) }
         for (cj in list) {
             val o = cj.jsonObject
             val key = o.str("c") ?: continue
-            val v = o.str("v") ?: ""
             val si = key.substringBefore('|').toIntOrNull() ?: continue
             val ref = key.substringAfter('|')
             val path = paths.getOrNull(si) ?: continue
             val d = pkg.doc(path) ?: continue
-            val data = d.getElementsByTagName("sheetData").item(0) as? Element ?: continue
-            val rowNum = ref.dropWhile { it.isLetter() }.toIntOrNull() ?: continue
-            val col = colIndex(ref)
-            // qator
-            var row: Element? = null
-            var before: Element? = null
-            for (r in data.kids()) {
-                if (r.tagName != "row") continue
-                val rn = r.getAttribute("r").toIntOrNull() ?: continue
-                if (rn == rowNum) { row = r; break }
-                if (rn > rowNum) { before = r; break }
+            val c = findCell(d, ref, true) ?: continue
+            // umumiy formula guruhini avval ajratamiz (aks holda boshqa kataklar formulasiz qoladi)
+            c.child("f")?.takeIf { it.getAttribute("t") == "shared" }?.let { unshare(d, it.getAttribute("si")) }
+            (o["fmt"] as? JsonObject)?.let { fm ->
+                if (styles != null) c.setAttribute("s", xfFor(styles, c.getAttribute("s").toIntOrNull() ?: 0, fm).toString())
             }
-            if (row == null) {
-                row = d.createElement("row").also { it.setAttribute("r", rowNum.toString()) }
-                if (before != null) data.insertBefore(row, before) else data.appendChild(row)
-            }
-            row!!.removeAttribute("spans")
-            // katak
-            var cell: Element? = null
-            var cb: Element? = null
-            for (c in row.kids()) {
-                if (c.tagName != "c") continue
-                val ci = colIndex(c.getAttribute("r"))
-                if (ci == col) { cell = c; break }
-                if (ci > col) { cb = c; break }
-            }
-            if (cell == null) {
-                cell = d.createElement("c").also { it.setAttribute("r", ref) }
-                // ustun uslubi bo'lsa — saqlanadi (Excel o'zi qo'llaydi)
-                if (cb != null) row.insertBefore(cell, cb) else {
-                    val ext = row.child("extLst")
-                    if (ext != null) row.insertBefore(cell, ext) else row.appendChild(cell)
-                }
-            }
-            val c = cell!!
-            c.kids().filter { it.tagName == "f" || it.tagName == "v" || it.tagName == "is" }.forEach {
-                if (it.tagName == "f") droppedFormula = true
-                c.removeChild(it)
-            }
+            if (!o.has("v") && !o.has("f")) continue
+            val v = o.str("v") ?: ""
             val ext = c.child("extLst")
             fun put(e: Element) { if (ext != null) c.insertBefore(e, ext) else c.appendChild(e) }
-            val num = number(v)
+            fun putValue(vt: String?) {
+                when (vt) {
+                    "n" -> { c.removeAttribute("t"); put(d.createElement("v").also { it.textContent = v }) }
+                    "b" -> { c.setAttribute("t", "b"); put(d.createElement("v").also { it.textContent = if (v == "1" || v.equals("true", true)) "1" else "0" }) }
+                    "e" -> { c.setAttribute("t", "e"); put(d.createElement("v").also { it.textContent = v }) }
+                    "s" -> { c.setAttribute("t", "str"); put(d.createElement("v").also { it.textContent = v }) }
+                    else -> c.removeAttribute("t")
+                }
+            }
             when {
-                v.isEmpty() -> c.removeAttribute("t")
-                num != null -> {
-                    c.removeAttribute("t")
-                    put(d.createElement("v").also { it.textContent = num })
+                o.has("keepf") -> {
+                    c.kids().filter { it.tagName == "v" || it.tagName == "is" }.forEach { c.removeChild(it) }
+                    touchedFormula = true
+                    putValue(o.str("vt"))
+                }
+                o.str("f") != null -> {
+                    c.kids().filter { it.tagName == "f" || it.tagName == "v" || it.tagName == "is" }.forEach { c.removeChild(it) }
+                    touchedFormula = true
+                    put(d.createElement("f").also { it.textContent = o.str("f") })
+                    putValue(o.str("vt"))
                 }
                 else -> {
-                    c.setAttribute("t", "inlineStr")
-                    val isEl = d.createElement("is")
-                    val t = d.createElement("t")
-                    t.setAttribute("xml:space", "preserve")
-                    t.textContent = v
-                    isEl.appendChild(t)
-                    put(isEl)
+                    c.kids().filter { it.tagName == "f" || it.tagName == "v" || it.tagName == "is" }.forEach {
+                        if (it.tagName == "f") touchedFormula = true
+                        c.removeChild(it)
+                    }
+                    val num = number(v)
+                    when {
+                        v.isEmpty() -> c.removeAttribute("t")
+                        num != null -> { c.removeAttribute("t"); put(d.createElement("v").also { it.textContent = num }) }
+                        v.equals("TRUE", true) || v.equals("FALSE", true) -> { c.setAttribute("t", "b"); put(d.createElement("v").also { it.textContent = if (v.equals("TRUE", true)) "1" else "0" }) }
+                        else -> {
+                            c.setAttribute("t", "inlineStr")
+                            val isEl = d.createElement("is")
+                            val t = d.createElement("t")
+                            t.setAttribute("xml:space", "preserve")
+                            t.textContent = v
+                            isEl.appendChild(t)
+                            put(isEl)
+                        }
+                    }
                 }
             }
         }
-        if (droppedFormula) dropCalcChain(pkg)
+        if (touchedFormula) recalcOnLoad(pkg)
+    }
+
+    /** Hisob zanjirini olib tashlaydi va Excel ochilganda qayta hisoblashni so'raydi. */
+    private fun recalcOnLoad(pkg: Pkg) {
+        dropCalcChain(pkg)
+        val wb = pkg.doc("xl/workbook.xml") ?: return
+        val root = wb.documentElement
+        val cp = wb.getElementsByTagName("calcPr").item(0) as? Element ?: wb.createElement("calcPr").also { e ->
+            val after = listOf("definedNames", "externalReferences", "functionGroups", "sheets")
+            val anchor = after.firstNotNullOfOrNull { n -> root.child(n) }
+            if (anchor != null) insertAfter(anchor, e) else root.appendChild(e)
+        }
+        cp.setAttribute("fullCalcOnLoad", "1")
+    }
+
+    // ---------------------------------------------------------------- XLSX: tuzilma amallari
+
+    private val sheetOrder = listOf(
+        "sheetPr", "dimension", "sheetViews", "sheetFormatPr", "cols", "sheetData", "sheetCalcPr", "sheetProtection", "protectedRanges",
+        "scenarios", "autoFilter", "sortState", "dataConsolidate", "customSheetViews", "mergeCells", "phoneticPr", "conditionalFormatting",
+        "dataValidations", "hyperlinks", "printOptions", "pageMargins", "pageSetup", "headerFooter", "rowBreaks", "colBreaks",
+        "customProperties", "cellWatches", "ignoredErrors", "smartTags", "drawing", "legacyDrawing", "legacyDrawingHF", "picture",
+        "oleObjects", "controls", "webPublishItems", "tableParts", "extLst",
+    )
+
+    private fun shiftRef(ref: String, rows: Boolean, at: Int, n: Int): String? {
+        val parts = ref.split(':')
+        val out = ArrayList<String>()
+        for (p in parts) {
+            val m = Regex("(\\$?)([A-Za-z]{1,3})(\\$?)(\\d+)").matchEntire(p) ?: return ref
+            var r = m.groupValues[4].toInt() - 1
+            var c = colIndex(m.groupValues[2]) - 1
+            fun sh(x: Int) = if (n >= 0) (if (x >= at) x + n else x) else (if (x >= at - n) x + n else if (x >= at) at else x)
+            if (rows) r = sh(r) else c = sh(c)
+            out += m.groupValues[1] + colName(c.coerceAtLeast(0)) + m.groupValues[3] + (r.coerceAtLeast(0) + 1)
+        }
+        return out.joinToString(":")
+    }
+
+    /** Qator/ustun qo'shish ([n] > 0) yoki o'chirish ([n] < 0) — [at] dan boshlab (0 asosli). */
+    private fun shiftSheet(pkg: Pkg, si: Int, rows: Boolean, at: Int, n: Int) {
+        val refs = sheetRefs(pkg)
+        val sh = refs.getOrNull(si) ?: return
+        val d = pkg.doc(sh.path) ?: return
+        // umumiy formulalarni ajratib olamiz (ref diapazonlari surilganda buzilmasin)
+        val shared = HashSet<String>()
+        val fs = d.getElementsByTagName("f")
+        for (i in 0 until fs.length) (fs.item(i) as Element).takeIf { it.getAttribute("t") == "shared" }?.let { shared += it.getAttribute("si") }
+        shared.forEach { unshare(d, it) }
+        val data = d.getElementsByTagName("sheetData").item(0) as? Element ?: return
+        val delFrom = at
+        val delTo = at - n // o'chirishda: [at, at-n)
+        for (row in data.kids().filter { it.tagName == "row" }) {
+            val rn = (row.getAttribute("r").toIntOrNull() ?: continue) - 1
+            if (rows) {
+                if (n < 0 && rn in delFrom until delTo) { data.removeChild(row); continue }
+                if (rn >= at) row.setAttribute("r", (rn + (if (n < 0) n else n) + 1).toString())
+            }
+            row.removeAttribute("spans")
+            for (c in row.kids().filter { it.tagName == "c" }) {
+                val rc = cellRC(c.getAttribute("r")) ?: continue
+                var r = rc.first; var col = rc.second
+                if (rows) { if (r >= at) r += n } else {
+                    if (n < 0 && col in delFrom until delTo) { row.removeChild(c); continue }
+                    if (col >= at) col += n
+                }
+                c.setAttribute("r", colName(col) + (r + 1))
+            }
+        }
+        if (rows && n < 0) {
+            // o'chirilgan qatordan keyingilar allaqachon surildi; tartib saqlanadi
+        }
+        // formulalar: shu varaq va boshqa varaqlardagi havolalar
+        for (other in refs) {
+            val od = pkg.doc(other.path) ?: continue
+            val own = other.path == sh.path
+            val fl = od.getElementsByTagName("f")
+            for (i in 0 until fl.length) {
+                val f = fl.item(i) as Element
+                if (f.textContent.isEmpty()) continue
+                f.textContent = mapRefs(f.textContent, sh.name, own) { r, c, _, _ ->
+                    if (rows) (if (r >= at + (if (n < 0) -n else 0)) r + n else r) to c else r to (if (c >= at + (if (n < 0) -n else 0)) c + n else c)
+                }
+            }
+        }
+        // birlashtirilgan kataklar, o'lcham, filtr, gipervhavolalar, shartli format, tekshiruvlar
+        val merges = d.getElementsByTagName("mergeCell")
+        for (i in merges.length - 1 downTo 0) {
+            val m = merges.item(i) as Element
+            val ref = m.getAttribute("ref")
+            val a = cellRC(ref.substringBefore(':')) ?: continue
+            val b = cellRC(ref.substringAfter(':')) ?: a
+            val lo = if (rows) a.first else a.second
+            val hi = if (rows) b.first else b.second
+            if (n < 0 && hi >= delFrom && lo < delTo) { m.parentNode.removeChild(m); continue }
+            shiftRef(ref, rows, at, n)?.let { m.setAttribute("ref", it) }
+        }
+        (d.getElementsByTagName("mergeCells").item(0) as? Element)?.let { if (it.kids().isEmpty()) it.parentNode.removeChild(it) else it.countUpdate() }
+        for (tag in listOf("dimension", "autoFilter", "hyperlink", "selection", "pane")) {
+            val nl = d.getElementsByTagName(tag)
+            for (i in 0 until nl.length) {
+                val e = nl.item(i) as Element
+                for (attr in listOf("ref", "sqref", "activeCell", "topLeftCell")) {
+                    if (!e.hasAttribute(attr)) continue
+                    e.setAttribute(attr, e.getAttribute(attr).split(' ').mapNotNull { shiftRef(it, rows, at, n) }.joinToString(" "))
+                }
+            }
+        }
+        for (tag in listOf("conditionalFormatting", "dataValidation")) {
+            val nl = d.getElementsByTagName(tag)
+            for (i in 0 until nl.length) {
+                val e = nl.item(i) as Element
+                if (e.hasAttribute("sqref")) e.setAttribute("sqref", e.getAttribute("sqref").split(' ').mapNotNull { shiftRef(it, rows, at, n) }.joinToString(" "))
+            }
+        }
+        // ustun kengliklari
+        if (!rows) {
+            val cols = d.getElementsByTagName("col")
+            for (i in cols.length - 1 downTo 0) {
+                val c = cols.item(i) as Element
+                var mn = (c.getAttribute("min").toIntOrNull() ?: continue) - 1
+                var mx = (c.getAttribute("max").toIntOrNull() ?: continue) - 1
+                if (n < 0) {
+                    if (mn >= delFrom && mx < delTo) { c.parentNode.removeChild(c); continue }
+                    if (mn >= delTo) mn += n
+                    if (mx >= delTo) mx += n else if (mx >= delFrom) mx = delFrom - 1
+                } else { if (mn >= at) mn += n; if (mx >= at) mx += n }
+                if (mx < mn) { c.parentNode.removeChild(c); continue }
+                c.setAttribute("min", (mn + 1).toString()); c.setAttribute("max", (mx + 1).toString())
+            }
+        }
+        // nomlangan diapazonlar
+        pkg.doc("xl/workbook.xml")?.getElementsByTagName("definedName")?.let { nl ->
+            for (i in 0 until nl.length) {
+                val e = nl.item(i) as Element
+                e.textContent = mapRefs(e.textContent, sh.name, false) { r, c, _, _ ->
+                    if (rows) (if (r >= at + (if (n < 0) -n else 0)) r + n else r) to c else r to (if (c >= at + (if (n < 0) -n else 0)) c + n else c)
+                }
+            }
+        }
+        recalcOnLoad(pkg)
+    }
+
+    private fun ensureSheetChild(d: Document, name: String): Element {
+        val ws = d.documentElement
+        ws.child(name)?.let { return it }
+        val e = d.createElement(name)
+        val idx = sheetOrder.indexOf(name)
+        val before = ws.kids().firstOrNull { k -> sheetOrder.indexOf(k.tagName).let { it > idx } }
+        if (before == null) ws.appendChild(e) else ws.insertBefore(e, before)
+        return e
+    }
+
+    private fun sharedStrings(pkg: Pkg): List<String> {
+        val d = pkg.doc("xl/sharedStrings.xml") ?: return emptyList()
+        val out = ArrayList<String>()
+        val nl = d.getElementsByTagName("si")
+        for (i in 0 until nl.length) {
+            val si = nl.item(i) as Element
+            val ts = si.getElementsByTagName("t")
+            val sb = StringBuilder()
+            for (k in 0 until ts.length) {
+                val t = ts.item(k) as Element
+                if ((t.parentNode as Element).tagName != "rPh") sb.append(t.textContent)
+            }
+            out += sb.toString()
+        }
+        return out
+    }
+
+    private fun cellValue(c: Element, sst: List<String>): Any {
+        val t = c.getAttribute("t")
+        val v = c.child("v")?.textContent ?: ""
+        return when (t) {
+            "s" -> v.toIntOrNull()?.let { sst.getOrNull(it) } ?: ""
+            "inlineStr" -> c.child("is")?.textContent ?: ""
+            "str", "e" -> v
+            "b" -> if (v == "1") 1.0 else 0.0
+            else -> v.toDoubleOrNull() ?: v
+        }
+    }
+
+    private fun sortRows(pkg: Pkg, si: Int, r0: Int, r1: Int, col: Int, asc: Boolean) {
+        val sh = sheetRefs(pkg).getOrNull(si) ?: return
+        val d = pkg.doc(sh.path) ?: return
+        val shared = HashSet<String>()
+        val fs = d.getElementsByTagName("f")
+        for (i in 0 until fs.length) (fs.item(i) as Element).takeIf { it.getAttribute("t") == "shared" }?.let { shared += it.getAttribute("si") }
+        shared.forEach { unshare(d, it) }
+        val data = d.getElementsByTagName("sheetData").item(0) as? Element ?: return
+        val sst = sharedStrings(pkg)
+        val rows = data.kids().filter { it.tagName == "row" }.associateBy { (it.getAttribute("r").toIntOrNull() ?: 0) - 1 }
+        val last = minOf(r1, rows.keys.maxOrNull() ?: r0)
+        if (last <= r0) return
+        val idx = (r0..last).toList()
+        fun keyOf(r: Int): Any? = rows[r]?.kids()?.firstOrNull { it.tagName == "c" && cellRC(it.getAttribute("r"))?.second == col }?.let { cellValue(it, sst) }
+        val cmp = Comparator<Int> { a, b ->
+            val x = keyOf(a); val y = keyOf(b)
+            val ex = x == null || x == ""; val ey = y == null || y == ""
+            when {
+                ex && ey -> 0; ex -> 1; ey -> -1 // bo'shlar oxirida
+                x is Double && y is Double -> if (asc) x.compareTo(y) else y.compareTo(x)
+                x is Double -> if (asc) -1 else 1
+                y is Double -> if (asc) 1 else -1
+                else -> if (asc) x.toString().compareTo(y.toString(), true) else y.toString().compareTo(x.toString(), true)
+            }
+        }
+        val order = idx.sortedWith(cmp)
+        val moved = order.mapIndexedNotNull { newPos, old -> rows[old]?.let { Triple(it, old, r0 + newPos) } }
+        moved.forEach { data.removeChild(it.first) }
+        for ((row, old, nw) in moved) {
+            row.setAttribute("r", (nw + 1).toString())
+            for (c in row.kids().filter { it.tagName == "c" }) {
+                val rc = cellRC(c.getAttribute("r")) ?: continue
+                c.setAttribute("r", colName(rc.second) + (nw + 1))
+                c.child("f")?.let { f -> if (f.textContent.isNotEmpty()) f.textContent = translateF(f.textContent, nw - old, 0) }
+            }
+        }
+        // qatorlarni tartib bilan qayta joylash
+        val rest = data.kids().filter { it.tagName == "row" }
+        val all = (rest + moved.map { it.first }).sortedBy { it.getAttribute("r").toIntOrNull() ?: 0 }
+        rest.forEach { data.removeChild(it) }
+        val ext = data.child("extLst")
+        all.forEach { if (ext != null) data.insertBefore(it, ext) else data.appendChild(it) }
+        recalcOnLoad(pkg)
+    }
+
+    /**
+     * Excel tuzilma amallari. [op]: insRow, delRow, insCol, delCol (a — indeks, b — soni), merge/unmerge (diapazon),
+     * sortAsc/sortDesc (a — ustun, r0..r1), freeze (a — qatorlar, b — ustunlar), colWidth (a — ustun, extra — kenglik),
+     * addSheet/renameSheet (extra — nom), delSheet, filter (diapazon yoki bo'sh — olib tashlash).
+     */
+    fun xlsxOp(bytes: ByteArray, op: String, si: Int, r0: Int, c0: Int, r1: Int, c1: Int, extra: String? = null): ByteArray {
+        val pkg = Pkg(readZip(bytes))
+        val refs = sheetRefs(pkg)
+        val sh = refs.getOrNull(si)
+        when (op) {
+            "insRowAbove" -> shiftSheet(pkg, si, true, r0, r1 - r0 + 1)
+            "insRowBelow" -> shiftSheet(pkg, si, true, r1 + 1, r1 - r0 + 1)
+            "delRow" -> shiftSheet(pkg, si, true, r0, -(r1 - r0 + 1))
+            "insColLeft" -> shiftSheet(pkg, si, false, c0, c1 - c0 + 1)
+            "insColRight" -> shiftSheet(pkg, si, false, c1 + 1, c1 - c0 + 1)
+            "delCol" -> shiftSheet(pkg, si, false, c0, -(c1 - c0 + 1))
+            "merge", "unmerge" -> {
+                val d = pkg.doc(sh?.path ?: return bytes) ?: return bytes
+                val ref = colName(c0) + (r0 + 1) + ":" + colName(c1) + (r1 + 1)
+                val mc = ensureSheetChild(d, "mergeCells")
+                // kesishgan eski birlashmalarni olib tashlaymiz
+                for (m in mc.kids()) {
+                    val a = cellRC(m.getAttribute("ref").substringBefore(':')) ?: continue
+                    val b = cellRC(m.getAttribute("ref").substringAfter(':')) ?: a
+                    if (a.first <= r1 && b.first >= r0 && a.second <= c1 && b.second >= c0) mc.removeChild(m)
+                }
+                if (op == "merge" && (r1 > r0 || c1 > c0)) mc.appendChild(d.createElement("mergeCell").also { it.setAttribute("ref", ref) })
+                if (mc.kids().isEmpty()) mc.parentNode.removeChild(mc) else mc.countUpdate()
+            }
+            "sortAsc", "sortDesc" -> sortRows(pkg, si, r0, r1, c0, op == "sortAsc")
+            "freeze" -> {
+                val d = pkg.doc(sh?.path ?: return bytes) ?: return bytes
+                val views = ensureSheetChild(d, "sheetViews")
+                val view = views.child("sheetView") ?: d.createElement("sheetView").also { it.setAttribute("workbookViewId", "0"); views.appendChild(it) }
+                view.kids().filter { it.tagName == "pane" || it.tagName == "selection" }.forEach { view.removeChild(it) }
+                val rows = r0.coerceAtLeast(0); val cols = c0.coerceAtLeast(0)
+                if (rows + cols > 0) {
+                    val pane = d.createElement("pane")
+                    if (cols > 0) pane.setAttribute("xSplit", cols.toString())
+                    if (rows > 0) pane.setAttribute("ySplit", rows.toString())
+                    pane.setAttribute("topLeftCell", colName(cols) + (rows + 1))
+                    pane.setAttribute("activePane", if (rows > 0 && cols > 0) "bottomRight" else if (rows > 0) "bottomLeft" else "topRight")
+                    pane.setAttribute("state", "frozen")
+                    view.insertBefore(pane, view.firstChild)
+                }
+            }
+            "colWidth" -> {
+                val d = pkg.doc(sh?.path ?: return bytes) ?: return bytes
+                val w = extra?.toDoubleOrNull() ?: return bytes
+                val cols = ensureSheetChild(d, "cols")
+                for (col in c0..c1) {
+                    val n = col + 1
+                    // mavjud oraliqni bo'lamiz
+                    for (c in cols.kids()) {
+                        val mn = c.getAttribute("min").toIntOrNull() ?: continue
+                        val mx = c.getAttribute("max").toIntOrNull() ?: continue
+                        if (n in mn..mx) {
+                            if (mn < n) cols.insertBefore((c.cloneNode(true) as Element).also { it.setAttribute("max", (n - 1).toString()) }, c)
+                            if (mx > n) insertAfter(c, (c.cloneNode(true) as Element).also { it.setAttribute("min", (n + 1).toString()) })
+                            cols.removeChild(c)
+                            break
+                        }
+                    }
+                    val e = d.createElement("col")
+                    e.setAttribute("min", n.toString()); e.setAttribute("max", n.toString())
+                    e.setAttribute("width", w.toString()); e.setAttribute("customWidth", "1")
+                    val before = cols.kids().firstOrNull { (it.getAttribute("min").toIntOrNull() ?: 0) > n }
+                    if (before == null) cols.appendChild(e) else cols.insertBefore(e, before)
+                }
+            }
+            "filter" -> {
+                val d = pkg.doc(sh?.path ?: return bytes) ?: return bytes
+                d.documentElement.kids().filter { it.tagName == "autoFilter" }.forEach { d.documentElement.removeChild(it) }
+                if (r1 >= r0 && c1 >= c0 && extra != "off") ensureSheetChild(d, "autoFilter").setAttribute("ref", colName(c0) + (r0 + 1) + ":" + colName(c1) + (r1 + 1))
+            }
+            "addSheet" -> {
+                val wb = pkg.doc("xl/workbook.xml") ?: return bytes
+                var k = 1
+                while (pkg.files.containsKey("xl/worksheets/sheet$k.xml")) k++
+                val path = "xl/worksheets/sheet$k.xml"
+                pkg.files[path] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="$R_NS"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/><sheetData/><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>""".toByteArray()
+                addOverride(pkg, "/$path", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")
+                val rid = addRel(pkg, "xl/workbook.xml", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet", "worksheets/sheet$k.xml")
+                ensureNs(wb.documentElement, "xmlns:r" to R_NS)
+                val sheets = wb.getElementsByTagName("sheets").item(0) as Element
+                var maxId = 0
+                for (e in sheets.kids()) e.getAttribute("sheetId").toIntOrNull()?.let { if (it > maxId) maxId = it }
+                val names = refs.map { it.name.lowercase() }.toSet()
+                var name = extra?.takeIf { it.isNotBlank() } ?: "Sheet${refs.size + 1}"
+                var j = 2
+                val base = name
+                while (name.lowercase() in names) name = "$base ($j)".also { j++ }
+                val e = wb.createElement("sheet")
+                e.setAttribute("name", name.take(31)); e.setAttribute("sheetId", (maxId + 1).toString()); e.setAttribute("r:id", rid)
+                sheets.appendChild(e)
+            }
+            "renameSheet" -> {
+                val nm = extra?.replace(Regex("[\\\\/?*\\[\\]:]"), "")?.trim()?.take(31) ?: return bytes
+                if (nm.isEmpty() || sh == null || refs.any { it !== sh && it.name.equals(nm, true) }) return bytes
+                val old = sh.name
+                sh.el.setAttribute("name", nm)
+                val quote = { n: String -> if (Regex("^[A-Za-z_][\\w.]*$").matches(n)) n else "'" + n.replace("'", "''") + "'" }
+                for (other in refs) {
+                    val od = pkg.doc(other.path) ?: continue
+                    val fl = od.getElementsByTagName("f")
+                    for (i in 0 until fl.length) {
+                        val f = fl.item(i) as Element
+                        f.textContent = f.textContent.replace(Regex("(?i)(?<![\\w.])('" + Regex.escape(old.replace("'", "''")) + "'|" + Regex.escape(old) + ")!"), Regex.escapeReplacement(quote(nm) + "!"))
+                    }
+                }
+                pkg.doc("xl/workbook.xml")?.getElementsByTagName("definedName")?.let { nl ->
+                    for (i in 0 until nl.length) {
+                        val e = nl.item(i) as Element
+                        e.textContent = e.textContent.replace(Regex("(?i)(?<![\\w.])('" + Regex.escape(old.replace("'", "''")) + "'|" + Regex.escape(old) + ")!"), Regex.escapeReplacement(quote(nm) + "!"))
+                    }
+                }
+            }
+            "delSheet" -> {
+                if (refs.size <= 1 || sh == null) return bytes
+                val wb = pkg.doc("xl/workbook.xml") ?: return bytes
+                val rid = sh.el.getAttribute("r:id")
+                sh.el.parentNode.removeChild(sh.el)
+                pkg.doc("xl/_rels/workbook.xml.rels")?.getElementsByTagName("Relationship")?.let { rl ->
+                    for (i in rl.length - 1 downTo 0) { val e = rl.item(i) as Element; if (e.getAttribute("Id") == rid) e.parentNode.removeChild(e) }
+                }
+                pkg.delete(sh.path)
+                pkg.delete(relsPath(sh.path))
+                pkg.doc("[Content_Types].xml")?.getElementsByTagName("Override")?.let { ov ->
+                    for (i in ov.length - 1 downTo 0) { val e = ov.item(i) as Element; if (e.getAttribute("PartName") == "/${sh.path}") e.parentNode.removeChild(e) }
+                }
+                // shu varaqqa tegishli nomlangan diapazonlar va faol varaq ko'rsatkichi
+                val dn = wb.getElementsByTagName("definedName")
+                for (i in dn.length - 1 downTo 0) {
+                    val e = dn.item(i) as Element
+                    val ls = e.getAttribute("localSheetId").toIntOrNull()
+                    when {
+                        ls == si -> e.parentNode.removeChild(e)
+                        ls != null && ls > si -> e.setAttribute("localSheetId", (ls - 1).toString())
+                        e.textContent.contains(sh.name + "!") || e.textContent.contains("'" + sh.name + "'!") -> e.parentNode.removeChild(e)
+                    }
+                }
+                (wb.getElementsByTagName("definedNames").item(0) as? Element)?.let { if (it.kids().isEmpty()) it.parentNode.removeChild(it) }
+                val views = wb.getElementsByTagName("workbookView")
+                for (i in 0 until views.length) (views.item(i) as Element).let { it.setAttribute("activeTab", "0"); it.removeAttribute("firstSheet") }
+                recalcOnLoad(pkg)
+            }
+            else -> return bytes
+        }
+        return pkg.bytes()
+    }
+
+    /** Bo'sh XLSX kitob (bitta varaq, standart uslublar). */
+    fun newXlsx(sheetName: String = "Sheet1"): ByteArray {
+        val files = LinkedHashMap<String, ByteArray>()
+        val decl = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
+        val sn = sheetName.replace("&", "&amp;").replace("<", "&lt;").replace("\"", "&quot;")
+        files["[Content_Types].xml"] = (decl + """<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>""").toByteArray()
+        files["_rels/.rels"] = (decl + """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>""").toByteArray()
+        files["docProps/core.xml"] = (decl + """<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>QulayOfis</dc:creator></cp:coreProperties>""").toByteArray()
+        files["docProps/app.xml"] = (decl + """<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>QulayOfis</Application></Properties>""").toByteArray()
+        files["xl/_rels/workbook.xml.rels"] = (decl + """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>""").toByteArray()
+        files["xl/workbook.xml"] = (decl + """<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="$R_NS"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="$sn" sheetId="1" r:id="rId1"/></sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>""").toByteArray()
+        files["xl/styles.xml"] = (decl + """<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>""").toByteArray()
+        files["xl/worksheets/sheet1.xml"] = (decl + """<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="$R_NS"><sheetViews><sheetView tabSelected="1" workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/><sheetData/><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>""").toByteArray()
+        val bo = ByteArrayOutputStream()
+        ZipOutputStream(bo).use { z -> for ((k, v) in files) { z.putNextEntry(ZipEntry(k)); z.write(v); z.closeEntry() } }
+        return bo.toByteArray()
     }
 
     /** Formulasi olib tashlangan katak bo'lsa, eski hisob zanjiri Excel'da xato beradi — o'chiramiz. */

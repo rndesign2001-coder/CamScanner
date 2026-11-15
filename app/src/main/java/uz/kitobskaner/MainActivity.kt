@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                                 // bo'sh hujjat "Fayllar" bo'limida yaratiladi va tahrirlash rejimida ochiladi
                                 val ex = (application as App).exporter
                                 val f = ex.uniqueFile(ex.safeName(getString(R.string.new_doc_name)), kind)
-                                f.writeBytes(uz.kitobskaner.office.OfficeEditor.newDocx())
+                                f.writeBytes(if (kind == "xlsx") uz.kitobskaner.office.OfficeEditor.newXlsx() else uz.kitobskaner.office.OfficeEditor.newDocx())
                                 ex.refreshFiles()
                                 nav.navigate(Routes.doc(Uri.fromFile(f), edit = true))
                             },

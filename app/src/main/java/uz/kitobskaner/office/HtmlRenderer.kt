@@ -207,7 +207,8 @@ body.editing td[data-c]:focus{outline:2px solid #1D6F42;outline-offset:-2px}
 #outline,.cards{display:none}
 $css
 </style></head><body data-kind="$kind"$attrs>$body<script>$script
-$EDITOR_JS</script></body></html>"""
+$EDITOR_JS
+${if (kind == "xlsx") XLSX_JS else ""}</script></body></html>"""
 
     // ---------------------------------------------------------------- DOCX
 
@@ -796,7 +797,16 @@ body:not(.mobile) .pb{border:none;margin:0}
     }
 
     private val sheetCss = """
-.tabs{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:8px;background:#E9EBF0}
+.xhead{position:sticky;top:0;z-index:6;background:#E9EBF0}
+#fbar{display:none;align-items:center;gap:6px;padding:6px 8px;background:#fff;border-bottom:1px solid #D5D8DE}
+body.editing #fbar{display:flex}
+#fref{min-width:46px;font:600 13px sans-serif;color:#1D6F42}
+.fx{font:italic 600 13px serif;color:#888}
+#fin{flex:1;min-width:0;border:1px solid #C9CCD6;border-radius:8px;padding:7px 8px;font:15px monospace}
+#fok{border:0;background:#1D6F42;color:#fff;border-radius:8px;padding:7px 12px;font-size:15px}
+td.csel{outline:2px solid #1D6F42;outline-offset:-2px}
+td.crng{background-color:rgba(29,111,66,.14)!important}
+.tabs{position:relative;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:8px;background:#E9EBF0}
 .tabs button{border:1px solid #c9ccd6;background:#fff;border-radius:16px;padding:6px 14px;font-size:14px;white-space:nowrap}
 .tabs button.on{background:#1D6F42;color:#fff;border-color:#1D6F42}
 .sheet{overflow:auto;background:#fff;margin:0 8px 12px;box-shadow:0 1px 6px rgba(0,0,0,.15)}
@@ -821,11 +831,12 @@ body.mobile .sheet{background:transparent;box-shadow:none}
         val body = StringBuilder()
         parts.forEachIndexed { si, (name, html) ->
             tabs.append("<button onclick=\"show($si)\" id=\"tb$si\"${if (si == 0) " class=\"on\"" else ""}>${esc(name)}</button>")
-            body.append("<div class=\"sheet\" id=\"sh$si\" style=\"display:${if (si == 0) "block" else "none"}\">").append(html).append("</div>")
+            body.append("<div class=\"sheet\" id=\"sh$si\" data-name=\"${esc(name)}\" style=\"display:${if (si == 0) "block" else "none"}\">").append(html).append("</div>")
         }
         tabs.append("</div>")
         val script = """function show(i){var s=document.querySelectorAll('.sheet');for(var k=0;k<s.length;k++){s[k].style.display=k==i?'block':'none';document.getElementById('tb'+k).className=k==i?'on':''}}"""
-        return page(title, sheetCss, (if (parts.size > 1) tabs.toString() else "") + body, script, "xlsx")
+        val fbar = "<div id=\"fbar\"><b id=\"fref\"></b><span class=\"fx\">fx</span><input id=\"fin\" autocomplete=\"off\" autocapitalize=\"off\" spellcheck=\"false\"><button id=\"fok\">✓</button></div>"
+        return page(title, sheetCss, "<div class=\"xhead\">" + (if (parts.size > 1) tabs.toString() else "") + fbar + "</div>" + body, script, "xlsx")
     }
 
     /** Oddiy qiymatlar jadvali (formatlashsiz): kalit = qator*1000 + ustun. */
@@ -865,7 +876,10 @@ body.mobile .sheet{background:transparent;box-shadow:none}
         return sb.toString()
     }
 
-    private class XCell(val text: String, val css: String, val numeric: Boolean, val wrap: Boolean, val bordered: Boolean)
+    private class XCell(
+        val text: String, val css: String, val numeric: Boolean, val wrap: Boolean, val bordered: Boolean,
+        val f: String? = null, val sharedF: Boolean = false, val raw: String? = null, val nfmt: String? = null,
+    )
 
     private fun xlsxSheet(
         b: ByteArray, shared: List<String>, fonts: List<XFont>, fills: List<String?>, borders: List<Boolean>,
@@ -899,8 +913,11 @@ body.mobile .sheet{background:transparent;box-shadow:none}
                     val t = p.a("t")
                     val s = p.a("s")?.toIntOrNull() ?: 0
                     var v = ""
+                    var fText: String? = null
+                    var fShared = false
                     p.children({ n ->
                         when (n) {
+                            "f" -> { if (p.a("t") == "shared") fShared = true; var ft = ""; p.children({ p.skipTag() }, { ft += it }); if (ft.isNotEmpty()) fText = ft }
                             "v" -> p.children({ p.skipTag() }, { v += it })
                             "is" -> p.children({ m ->
                                 when (m) {
@@ -939,7 +956,11 @@ body.mobile .sheet{background:transparent;box-shadow:none}
                         h?.let { if (it != "general") css.append("text-align:${if (it == "centerContinuous") "center" else it};") }
                     }
                     if (xf?.hAlign == null && numeric) css.append("text-align:right;")
-                    cells[rowIdx.toLong() * 1000 + col] = XCell(text, css.toString(), numeric, xf?.wrap == true, xf?.let { borders.getOrNull(it.border) } == true)
+                    val code = if (numeric) fmtCode(xf?.numFmt ?: 0, customFmt).takeIf { it != "General" } else null
+                    cells[rowIdx.toLong() * 1000 + col] = XCell(
+                        text, css.toString(), numeric, xf?.wrap == true, xf?.let { borders.getOrNull(it.border) } == true,
+                        fText, fShared && fText == null, if (numeric || t == "b") v else null, code,
+                    )
                     if (text.isNotEmpty() || css.isNotEmpty()) { if (rowIdx > maxR) maxR = rowIdx; if (col > maxC) maxC = col }
                 }
                 "mergeCell" -> {
@@ -992,6 +1013,10 @@ body.mobile .sheet{background:transparent;box-shadow:none}
                 val cls = listOfNotNull(if (cell?.wrap == true) "w" else null, if (cell?.bordered == true) "b" else null)
                 if (cls.isNotEmpty()) attrs.append(" class=\"${cls.joinToString(" ")}\"")
                 if (cell != null && cell.css.isNotEmpty()) attrs.append(" style=\"${cell.css}\"")
+                cell?.f?.let { attrs.append(" data-f=\"${esc(it)}\"") }
+                if (cell?.sharedF == true) attrs.append(" data-sf=\"1\"")
+                cell?.raw?.let { attrs.append(" data-v=\"${esc(it)}\"") }
+                cell?.nfmt?.let { attrs.append(" data-nfmt=\"${esc(it)}\"") }
                 sb.append("<td data-c=\"$si|${colName(c)}${r + 1}\"$attrs>${cell?.let { esc(it.text) } ?: ""}</td>")
             }
             sb.append("</tr>")
@@ -1001,6 +1026,14 @@ body.mobile .sheet{background:transparent;box-shadow:none}
     }
 
     /** Excel son formatlari: foiz, sana/vaqt, kasr xonalari, minglik ajratgich. */
+    private fun fmtCode(id: Int, custom: Map<Int, String>): String = custom[id] ?: when (id) {
+        1 -> "0"; 2 -> "0.00"; 3 -> "#,##0"; 4 -> "#,##0.00"; 9 -> "0%"; 10 -> "0.00%"; 11 -> "0.00E+00"
+        14 -> "dd.mm.yyyy"; 15 -> "d-mmm-yy"; 16 -> "d-mmm"; 17 -> "mmm-yy"; 18 -> "h:mm AM/PM"; 19 -> "h:mm:ss AM/PM"
+        20 -> "h:mm"; 21 -> "h:mm:ss"; 22 -> "dd.mm.yyyy h:mm"; 37, 38 -> "#,##0"; 39, 40 -> "#,##0.00"
+        45 -> "mm:ss"; 46 -> "[h]:mm:ss"; 47 -> "mm:ss.0"; 49 -> "@"
+        else -> "General"
+    }
+
     private fun formatNumber(d: Double, id: Int, custom: Map<Int, String>, date1904: Boolean): String {
         val code = custom[id] ?: when (id) {
             1 -> "0"; 2 -> "0.00"; 3 -> "#,##0"; 4 -> "#,##0.00"; 9 -> "0%"; 10 -> "0.00%"; 11 -> "0.00E+00"

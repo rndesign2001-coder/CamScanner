@@ -39,7 +39,22 @@ import androidx.compose.material.icons.automirrored.rounded.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.rounded.FormatAlignRight
 import androidx.compose.material.icons.automirrored.rounded.Redo
 import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.rounded.AddToPhotos
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Backspace
+import androidx.compose.material.icons.rounded.BorderAll
+import androidx.compose.material.icons.rounded.CallMerge
+import androidx.compose.material.icons.rounded.CallSplit
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.VerticalAlignTop
+import androidx.compose.material.icons.rounded.ViewColumn
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRightToPhotos
 import androidx.compose.material.icons.rounded.Approval
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Compress
@@ -228,6 +243,8 @@ fun DocumentScreen(
     var recoverOffer by remember { mutableStateOf<Pair<ByteArray, Long>?>(null) }
     var dialog by remember { mutableStateOf<String?>(null) }
     var statsJson by remember { mutableStateOf<String?>(null) }
+    var rangeMode by remember { mutableStateOf(false) }
+    var pendingSheet by remember { mutableIntStateOf(-1) }
     val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
     val errEnc = stringResource(R.string.err_encrypted)
@@ -240,6 +257,10 @@ fun DocumentScreen(
     val conflictMsg = stringResource(R.string.conflict_saved)
     val needCursorMsg = stringResource(R.string.need_cursor)
     val replacedFmt = stringResource(R.string.replaced_n)
+    val needCellMsg = stringResource(R.string.need_cell)
+    val lastSheetMsg = stringResource(R.string.last_sheet)
+    val copiedFmt = stringResource(R.string.copied_n)
+    val shownFmt = stringResource(R.string.shown_rows)
 
     suspend fun render(bytes: ByteArray) {
         val html = withContext(Dispatchers.Default) {
@@ -293,6 +314,10 @@ fun DocumentScreen(
         if (mobileView) web.eval("QO.view('mobile')")
         if (editing) web.eval("QO.edit(true)")
         if (moveMode) web.eval("QO.layout(true)")
+        if (pendingSheet >= 0) {
+            web.eval("if(window.show)show($pendingSheet)")
+            pendingSheet = -1
+        }
         if (pendingSlide >= 0) {
             web.eval("setTimeout(function(){if(window.go)go($pendingSlide)},150)")
             pendingSlide = -1
@@ -408,6 +433,44 @@ fun DocumentScreen(
                 val b = pending() ?: return@launch
                 val nb = withContext(Dispatchers.Default) { OfficeEditor.pageSetup(b, landscape, margin, numbers, header) }
                 setWork(nb, true)
+                render(nb)
+            } catch (e: Throwable) {
+                toast(context, e.message ?: e.javaClass.simpleName)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    /** Excel tuzilma amali: joriy tanlov bo'yicha, so'ng qayta chiziladi. */
+    fun xop(op: String, extra: String? = null) {
+        scope.launch {
+            busy = true
+            try {
+                val b = pending() ?: return@launch
+                val info = jsString(web.call("XL.selInfo()")) ?: return@launch
+                val o = Json.parseToJsonElement(info) as kotlinx.serialization.json.JsonObject
+                fun n(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: -1
+                val si = n("si").coerceAtLeast(0)
+                var r0 = n("r0"); var c0 = n("c0"); var r1 = n("r1"); var c1 = n("c1")
+                val needCell = op !in setOf("addSheet", "renameSheet", "delSheet", "freezeRow", "freezeCol", "unfreeze")
+                if (needCell && r0 < 0) { toast(context, needCellMsg); return@launch }
+                var realOp = op
+                when (op) {
+                    "freezeRow" -> { realOp = "freeze"; r0 = 1; c0 = 0 }
+                    "freezeCol" -> { realOp = "freeze"; r0 = 0; c0 = 1 }
+                    "unfreeze" -> { realOp = "freeze"; r0 = 0; c0 = 0 }
+                    "sortAsc", "sortDesc" -> if (r1 <= r0) { r0 = 1; r1 = 1_048_575 }
+                }
+                if (op == "delSheet" && (web.call("document.querySelectorAll('.sheet').length")?.toIntOrNull() ?: 1) <= 1) { toast(context, lastSheetMsg); return@launch }
+                val nb = withContext(Dispatchers.Default) { OfficeEditor.xlsxOp(b, realOp, si, r0, c0, r1, c1, extra) }
+                pendingSheet = when (op) {
+                    "addSheet" -> (web.call("document.querySelectorAll('.sheet').length")?.toIntOrNull() ?: 1)
+                    "delSheet" -> 0
+                    else -> si
+                }
+                setWork(nb, true)
+                rangeMode = false
                 render(nb)
             } catch (e: Throwable) {
                 toast(context, e.message ?: e.javaClass.simpleName)
@@ -618,7 +681,15 @@ fun DocumentScreen(
                 ) {
                     if (searching) SearchBar(query, onQuery = { query = it; web.find(it) }, onPrev = { web.next(false) }, onNext = { web.next(true) })
                     OfficeWebView(htmlFile!!, web, Modifier.weight(1f).fillMaxWidth(), scripts = kind != Fmt.HTML && kind != Fmt.EPUB)
-                    if (editing) EditToolbar(
+                    if (editing && kind == Fmt.XLSX) XlsxToolbar(
+                        rangeMode = rangeMode,
+                        onRange = { rangeMode = !rangeMode; web.eval("XL.range($rangeMode)") },
+                        onJs = { web.eval(it) },
+                        onOp = { op, extra -> xop(op, extra) },
+                        onDialog = { d ->
+                            if (d == "copy") web.eval("XL.copy()") { r -> toast(context, String.format(copiedFmt, r?.toIntOrNull() ?: 0)) } else dialog = d
+                        },
+                    ) else if (editing) EditToolbar(
                         kind = kind,
                         moveMode = moveMode,
                         onJs = { web.eval(it) },
@@ -700,6 +771,22 @@ fun DocumentScreen(
             web.eval("QO.replaceAll(${jsLit(f)},${jsLit(r)},$mc)") { res -> toast(context, String.format(replacedFmt, res?.toIntOrNull() ?: 0)) }
         }
         "count" -> StatsDialog(statsJson, onDismiss = { dialog = null })
+        "sheetAdd" -> TextInputDialog(stringResource(R.string.add_sheet), stringResource(R.string.sheet_name), onDismiss = { dialog = null }) { v ->
+            dialog = null; xop("addSheet", v)
+        }
+        "sheetRename" -> TextInputDialog(stringResource(R.string.rename_sheet), stringResource(R.string.sheet_name), onDismiss = { dialog = null }) { v ->
+            dialog = null; if (v.isNotEmpty()) xop("renameSheet", v)
+        }
+        "filter" -> TextInputDialog(stringResource(R.string.filter), stringResource(R.string.filter_hint), onDismiss = { dialog = null }) { v ->
+            dialog = null
+            scope.launch {
+                val info = jsString(web.call("XL.selInfo()")) ?: return@launch
+                val c = ((Json.parseToJsonElement(info) as kotlinx.serialization.json.JsonObject)["c0"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toInt() ?: -1
+                if (c < 0) { toast(context, needCellMsg); return@launch }
+                val n = web.call("XL.filter($c,${jsLit(v)})")?.toIntOrNull() ?: 0
+                if (v.isNotEmpty()) toast(context, String.format(shownFmt, n))
+            }
+        }
         "page" -> PageSetupDialog(onDismiss = { dialog = null }) { land, margin, nums, header ->
             dialog = null
             pageSetup(land, margin, nums, header)
@@ -1216,4 +1303,141 @@ private fun LegacyNotice(name: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center
         )
     }
+}
+
+// ---------------------------------------------------------------- Excel paneli
+
+@Composable
+private fun XlsxToolbar(
+    rangeMode: Boolean,
+    onRange: () -> Unit,
+    onJs: (String) -> Unit,
+    onOp: (String, String?) -> Unit,
+    onDialog: (String) -> Unit,
+) {
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var menu by remember { mutableStateOf<String?>(null) }
+    Surface(tonalElevation = 6.dp, shadowElevation = 12.dp, color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(
+                stringResource(R.string.xlsx_hint), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 6.dp), maxLines = 2,
+            )
+            Row(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                listOf(R.string.tab_home, R.string.tab_formulas, R.string.tab_rows, R.string.tab_sheet, R.string.tab_data).forEachIndexed { i, t ->
+                    val on = tab == i
+                    Text(
+                        stringResource(t),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
+                            .clickable { tab = i }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            Row(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                when (tab) {
+                    0 -> {
+                        Tool(Icons.AutoMirrored.Rounded.Undo) { onJs("XL.undo()") }
+                        Tool(Icons.AutoMirrored.Rounded.Redo) { onJs("XL.redo()") }
+                        Tool(Icons.Rounded.SelectAll, selected = rangeMode, label = stringResource(R.string.range_mode)) { onRange() }
+                        Sep()
+                        Tool(Icons.Rounded.FormatBold) { onJs("XL.toggle('b')") }
+                        Tool(Icons.Rounded.FormatItalic) { onJs("XL.toggle('i')") }
+                        Box {
+                            Tool(Icons.Rounded.FormatColorText) { menu = "color" }
+                            DropdownMenu(expanded = menu == "color", onDismissRequest = { menu = null }) {
+                                Swatches(textColors, stringResource(R.string.text_color)) { c -> menu = null; onJs("XL.fmt({c:'$c'})") }
+                            }
+                        }
+                        Box {
+                            Tool(Icons.Rounded.FormatColorFill) { menu = "fill" }
+                            DropdownMenu(expanded = menu == "fill", onDismissRequest = { menu = null }) {
+                                Swatches(markColors.map { if (it == "transparent") "none" else it }, stringResource(R.string.highlight_color)) { c -> menu = null; onJs("XL.fmt({bg:'$c'})") }
+                            }
+                        }
+                        Tool(Icons.AutoMirrored.Rounded.FormatAlignLeft) { onJs("XL.fmt({al:'left'})") }
+                        Tool(Icons.Rounded.FormatAlignCenter) { onJs("XL.fmt({al:'center'})") }
+                        Tool(Icons.AutoMirrored.Rounded.FormatAlignRight) { onJs("XL.fmt({al:'right'})") }
+                        Tool(Icons.Rounded.BorderAll, label = stringResource(R.string.borders)) { onJs("XL.fmt({bd:true})") }
+                        Box {
+                            TextChip(stringResource(R.string.number_format)) { menu = "nf" }
+                            DropdownMenu(expanded = menu == "nf", onDismissRequest = { menu = null }) {
+                                listOf("gen" to R.string.nf_gen, "int" to R.string.nf_int, "num2" to R.string.nf_num2, "pct" to R.string.nf_pct, "cur" to R.string.nf_cur, "date" to R.string.nf_date)
+                                    .forEach { (k, l) -> DropdownMenuItem(text = { Text(stringResource(l)) }, onClick = { menu = null; onJs("XL.fmt({nf:'$k'})") }) }
+                            }
+                        }
+                        Sep()
+                        Tool(Icons.Rounded.ContentCopy, label = stringResource(R.string.copy_cells)) { onDialog("copy") }
+                        Tool(Icons.Rounded.ContentPaste, label = stringResource(R.string.paste_cells)) { onJs("XL.paste()") }
+                        Tool(Icons.Rounded.Backspace, label = stringResource(R.string.clear_cells)) { onJs("XL.clear()") }
+                    }
+                    1 -> listOf("SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "IF", "SUMIF", "COUNTIF", "ROUND").forEach { f ->
+                        Text(
+                            if (f == "SUM") "Σ SUM" else f,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier
+                                .padding(horizontal = 3.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+                                .clickable { onJs("XL.autoFn('$f')") }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                        )
+                    }
+                    2 -> {
+                        LabeledTool(Icons.Rounded.VerticalAlignTop, stringResource(R.string.ins_row_above)) { onOp("insRowAbove", null) }
+                        LabeledTool(Icons.Rounded.VerticalAlignBottom, stringResource(R.string.ins_row_below)) { onOp("insRowBelow", null) }
+                        LabeledTool(Icons.Rounded.DeleteSweep, stringResource(R.string.del_row)) { onOp("delRow", null) }
+                        LabeledTool(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, stringResource(R.string.ins_col_left)) { onOp("insColLeft", null) }
+                        LabeledTool(Icons.AutoMirrored.Rounded.KeyboardArrowRight, stringResource(R.string.ins_col_right)) { onOp("insColRight", null) }
+                        LabeledTool(Icons.Rounded.Delete, stringResource(R.string.del_col)) { onOp("delCol", null) }
+                        LabeledTool(Icons.Rounded.CallMerge, stringResource(R.string.merge_cells)) { onOp("merge", null) }
+                        LabeledTool(Icons.Rounded.CallSplit, stringResource(R.string.unmerge_cells)) { onOp("unmerge", null) }
+                        LabeledTool(Icons.Rounded.ViewColumn, stringResource(R.string.col_narrow)) { onOp("colWidth", "8") }
+                        LabeledTool(Icons.Rounded.ViewColumn, stringResource(R.string.col_normal)) { onOp("colWidth", "13") }
+                        LabeledTool(Icons.Rounded.ViewColumn, stringResource(R.string.col_wide)) { onOp("colWidth", "25") }
+                    }
+                    3 -> {
+                        LabeledTool(Icons.Rounded.Add, stringResource(R.string.add_sheet)) { onDialog("sheetAdd") }
+                        LabeledTool(Icons.Rounded.Edit, stringResource(R.string.rename_sheet)) { onDialog("sheetRename") }
+                        LabeledTool(Icons.Rounded.Delete, stringResource(R.string.del_sheet)) { onOp("delSheet", null) }
+                        LabeledTool(Icons.Rounded.AcUnit, stringResource(R.string.freeze_row)) { onOp("freezeRow", null) }
+                        LabeledTool(Icons.Rounded.AcUnit, stringResource(R.string.freeze_col)) { onOp("freezeCol", null) }
+                        LabeledTool(Icons.Rounded.Close, stringResource(R.string.unfreeze)) { onOp("unfreeze", null) }
+                    }
+                    4 -> {
+                        LabeledTool(Icons.Rounded.ArrowUpward, stringResource(R.string.sort_az)) { onOp("sortAsc", null) }
+                        LabeledTool(Icons.Rounded.ArrowDownward, stringResource(R.string.sort_za)) { onOp("sortDesc", null) }
+                        LabeledTool(Icons.Rounded.FilterList, stringResource(R.string.filter)) { onDialog("filter") }
+                        LabeledTool(Icons.Rounded.FindReplace, stringResource(R.string.find_replace)) { onDialog("find") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TextInputDialog(title: String, label: String, initial: String = "", onDismiss: () -> Unit, onOk: (String) -> Unit) {
+    var v by rememberSaveable { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { OutlinedTextField(v, { v = it }, label = { Text(label) }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { onOk(v.trim()) }) { Text(stringResource(R.string.apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }

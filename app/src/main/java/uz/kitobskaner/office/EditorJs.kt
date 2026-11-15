@@ -65,7 +65,8 @@ function collect(){var res={paras:[],cells:[],moved:moved,removed:Object.keys(re
   (groups[id]=groups[id]||[]).push(el)}
  for(var id2 in orig){var g=groups[id2]||[];if(g.length==1&&sig(g[0],id2)==orig[id2])continue;var ps=[];for(j=0;j<g.length;j++)ps.push(ser(g[j],id2));
   res.paras.push({id:id2,ps:ps})}
- for(var c in cells){var td=document.querySelector('td[data-c="'+c+'"]');if(td&&td.innerText!=cells[c])res.cells.push({c:c,v:td.innerText.replace(/ /g,' ').trim()})}
+ if(window.XL)res.cells=XL.cells();
+ else for(var c in cells){var td=document.querySelector('td[data-c="'+c+'"]');if(td&&td.innerText!=cells[c])res.cells.push({c:c,v:td.innerText.replace(/ /g,' ').trim()})}
  var bx=document.querySelectorAll('[data-new]');for(i=0;i<bx.length;i++){var b=bx[i],ps2=[],pp=b.querySelectorAll('p');for(j=0;j<pp.length;j++)ps2.push(ser(pp[j],''));
   if(!pp.length&&b.innerText.trim())ps2.push({rs:[{t:b.innerText.trim()}]});if(!ps2.length)continue;
   res.boxes.push({slide:+b.getAttribute('data-slide'),x:b.offsetLeft*.75,y:b.offsetTop*.75,w:b.offsetWidth*.75,h:b.offsetHeight*.75,ps:ps2})}
@@ -118,7 +119,7 @@ function lit(t,f,r,mc){var a=mc?t:t.toLowerCase(),b=mc?f:f.toLowerCase(),o='',p=
 function replaceAll(f,r,mc){if(!f)return 0;snapshot();var n=0,rs=roots();
  for(var i=0;i<rs.length;i++){if(rs[i].contentEditable!='true')continue;var w=document.createTreeWalker(rs[i],NodeFilter.SHOW_TEXT),t,list2=[];
   while(t=w.nextNode())list2.push(t);for(var j=0;j<list2.length;j++){var x=list2[j];if(x.parentElement.closest('[contenteditable="false"]'))continue;
-   var res=lit(x.data,f,r,mc);if(res[1]){n+=res[1];x.data=res[0]}}}fitDoc();return n}
+   var res=lit(x.data,f,r,mc);if(res[1]){n+=res[1];x.data=res[0];if(K=='xlsx'&&window.XL)XL.touched(rs[i])}}}fitDoc();return n}
 function stats(){var t='',rs=document.querySelectorAll(K=='docx'?'.page':K=='pptx'?'.slide':'td');for(var i=0;i<rs.length;i++){
   var c=rs[i].cloneNode(true),x=c.querySelectorAll('.pgno,.bul,.no');for(var j=0;j<x.length;j++)x[j].remove();t+=' '+c.textContent}
  var w=t.trim().split(/\s+/).filter(function(s){return s.length}).length;
@@ -129,7 +130,7 @@ function sizeTo(pt){var s=getSelection();if(!s.rangeCount||s.isCollapsed)return;
  var f=document.querySelectorAll('font[size="7"]');for(var i=0;i<f.length;i++){var sp=document.createElement('span');sp.style.fontSize=pt+'pt';
   while(f[i].firstChild)sp.appendChild(f[i].firstChild);f[i].parentNode.replaceChild(sp,f[i]);
   var inn=sp.querySelectorAll('[style]');for(var j=0;j<inn.length;j++)inn[j].style.fontSize=''}fitDoc()}
-function cmd(c,v){focusSel();document.execCommand(c,false,v==null?null:v);fitDoc()}
+function cmd(c,v){if(K=='xlsx'&&window.XL&&(c=='undo'||c=='redo')){XL[c]();return}focusSel();document.execCommand(c,false,v==null?null:v);fitDoc()}
 function size(d){var s=getSelection();if(!s.rangeCount||s.isCollapsed)return;var n=s.anchorNode,el=n&&(n.nodeType==1?n:n.parentElement);
  var cur=el?parseFloat(getComputedStyle(el).fontSize)*.75:11,nv=Math.max(4,Math.round(cur+d));
  document.execCommand('styleWithCSS',false,false);document.execCommand('fontSize',false,'7');document.execCommand('styleWithCSS',false,true);
