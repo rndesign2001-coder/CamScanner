@@ -458,4 +458,17 @@
     <string name="orient_auto">Auto</string>
     <string name="images_pdf_name">Images</string>
     <string name="make_pdf_n">Create PDF (%d images)</string>
+    <string name="file_converter">File converter</string>
+    <string name="file_converter_sub">Word, Excel, PowerPoint, PDF, CSV, RTF...</string>
+    <string name="choose_file">Choose a file</string>
+    <string name="detected_format">Detected format: %s</string>
+    <string name="to_pdf">Convert to PDF</string>
+    <string name="to_docx">Convert to Word (DOCX)</string>
+    <string name="to_xlsx">Convert to Excel (XLSX)</string>
+    <string name="to_images">Convert to images (JPG)</string>
+    <string name="to_txt">Convert to text (TXT)</string>
+    <string name="no_conversions">No conversions available for this file type</string>
+    <string name="convert_to">Convert to</string>
+    <string name="convert_failed">Conversion failed</string>
+    <string name="docx_conv_note">Text, headings, bold/italic and table cells are kept; fonts and colors become default.</string>
 </resources>

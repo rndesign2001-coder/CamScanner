@@ -146,6 +146,8 @@ import uz.kitobskaner.office.Fmt
 import uz.kitobskaner.office.FormatSniffer
 import uz.kitobskaner.office.HtmlRenderer
 import uz.kitobskaner.office.OfficeEditor
+import uz.kitobskaner.office.OfficeConvert
+import androidx.compose.material.icons.rounded.PictureAsPdf
 import uz.kitobskaner.office.Recovery
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -272,6 +274,7 @@ fun DocumentScreen(
     val replacedFmt = stringResource(R.string.replaced_n)
     val needCellMsg = stringResource(R.string.need_cell)
     val copiedMsg = stringResource(R.string.copied)
+    val convertFailed = stringResource(R.string.convert_failed)
     val lastSheetMsg = stringResource(R.string.last_sheet)
     val copiedFmt = stringResource(R.string.copied_n)
     val shownFmt = stringResource(R.string.shown_rows)
@@ -524,6 +527,28 @@ fun DocumentScreen(
         }
     }
 
+    /** Joriy hujjatni (saqlanmagan o'zgarishlar bilan) boshqa formatga aylantiradi. */
+    fun convertTo(target: String) {
+        scope.launch {
+            busy = true
+            try {
+                val b = (if (office) pending() else null) ?: readOriginal()
+                val ex = app.exporter
+                val out = ex.uniqueFile(ex.safeName(base), target)
+                val ok = when (target) {
+                    "pdf" -> OfficeConvert.toPdf(context, b, kind, name, out)
+                    "docx" -> OfficeConvert.toDocx(context, b, kind, base, out)
+                    else -> OfficeConvert.toXlsx(b, kind, out)
+                }
+                if (ok) { ex.refreshFiles(); onOpenFile(out) } else { out.delete(); toast(context, convertFailed) }
+            } catch (e: Throwable) {
+                toast(context, convertFailed + ": " + (e.message ?: e.javaClass.simpleName))
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     fun insertImage(u: Uri) {
         scope.launch {
             val r = withContext(Dispatchers.Default) { prepareImage(context, u) } ?: return@launch
@@ -716,6 +741,21 @@ fun DocumentScreen(
                     if (kind != Fmt.PDF && kind != Fmt.UNKNOWN && !editing) Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (OfficeConvert.pdfSources(kind)) DropdownMenuItem(
+                                text = { Text(stringResource(R.string.to_pdf)) },
+                                leadingIcon = { Icon(Icons.Rounded.PictureAsPdf, null) },
+                                onClick = { menu = false; convertTo("pdf") },
+                            )
+                            if (OfficeConvert.docxSources(kind)) DropdownMenuItem(
+                                text = { Text(stringResource(R.string.to_docx)) },
+                                leadingIcon = { Icon(Icons.Rounded.Description, null) },
+                                onClick = { menu = false; convertTo("docx") },
+                            )
+                            if (OfficeConvert.xlsxSources(kind)) DropdownMenuItem(
+                                text = { Text(stringResource(R.string.to_xlsx)) },
+                                leadingIcon = { Icon(Icons.Rounded.TableChart, null) },
+                                onClick = { menu = false; convertTo("xlsx") },
+                            )
                             if (htmlFile != null) DropdownMenuItem(
                                 text = { Text(stringResource(R.string.print_pdf)) },
                                 leadingIcon = { Icon(Icons.Rounded.Print, null) },

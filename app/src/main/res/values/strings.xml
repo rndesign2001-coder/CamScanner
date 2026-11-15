@@ -459,4 +459,17 @@
     <string name="orient_auto">Avto</string>
     <string name="images_pdf_name">Rasmlar</string>
     <string name="make_pdf_n">PDF yaratish (%d ta rasm)</string>
+    <string name="file_converter">Fayl konvertori</string>
+    <string name="file_converter_sub">Word, Excel, PowerPoint, PDF, CSV, RTF...</string>
+    <string name="choose_file">Fayl tanlang</string>
+    <string name="detected_format">Aniqlangan format: %s</string>
+    <string name="to_pdf">PDF ga aylantirish</string>
+    <string name="to_docx">Word (DOCX) ga aylantirish</string>
+    <string name="to_xlsx">Excel (XLSX) ga aylantirish</string>
+    <string name="to_images">Rasmlarga (JPG) aylantirish</string>
+    <string name="to_txt">Matnga (TXT) aylantirish</string>
+    <string name="no_conversions">Bu fayl turi uchun konvertatsiya mavjud emas</string>
+    <string name="convert_to">Nimaga aylantiramiz?</string>
+    <string name="convert_failed">Konvertatsiya bajarilmadi</string>
+    <string name="docx_conv_note">Eski formatdan DOCX ga o‘tkazishda matn, sarlavhalar, qalin/kursiv va jadval kataklari saqlanadi; shrift va ranglar standart bo‘ladi.</string>
 </resources>

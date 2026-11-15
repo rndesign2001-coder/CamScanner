@@ -145,6 +145,7 @@ class MainActivity : ComponentActivity() {
                                     "pages" -> nav.navigate("pdfpages")
                                     "annotate" -> nav.navigate("pdfannot")
                                     "images" -> nav.navigate("imagespdf")
+                                    "convert" -> nav.navigate("fileconvert")
                                     else -> nav.navigate("pdfops/$m")
                                 }
                             },
@@ -250,6 +251,14 @@ class MainActivity : ComponentActivity() {
                             projectId = it.arguments?.getString("project") ?: return@composable,
                             pageId = it.arguments?.getString("page") ?: return@composable,
                             onBack = { nav.popBackStack() },
+                        )
+                    }
+                    composable("fileconvert") {
+                        uz.kitobskaner.ui.tools.FileConvertScreen(
+                            onBack = { nav.popBackStack() },
+                            onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) },
+                            onPdfConvert = { t -> nav.navigate(Routes.convert(t)) },
+                            onImagesPdf = { nav.navigate("imagespdf") },
                         )
                     }
                     composable("imagespdf") {

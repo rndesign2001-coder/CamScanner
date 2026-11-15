@@ -186,6 +186,7 @@ fun MainScreen(
         Tool(R.drawable.ic3d_merge, R.string.tool_merge, R.string.tool_merge_sub, 1) { onPdfOp("merge") },
         Tool(R.drawable.ic3d_compress, R.string.tool_compress, R.string.tool_compress_sub, 1, onCompress),
         Tool(R.drawable.ic3d_lock, R.string.tool_protect, R.string.tool_protect_sub, 1) { onPdfOp("protect") },
+        Tool(R.drawable.ic3d_files, R.string.file_converter, R.string.file_converter_sub, 2) { onPdfOp("convert") },
         Tool(R.drawable.ic3d_word, R.string.tool_pdf_word, R.string.tool_pdf_word_sub, 2) { onConvert("docx") },
         Tool(R.drawable.ic3d_excel, R.string.tool_pdf_excel, R.string.tool_pdf_excel_sub, 2) { onConvert("xlsx") },
         Tool(R.drawable.ic3d_images, R.string.tool_pdf_jpg, R.string.tool_pdf_jpg_sub, 2) { onConvert("jpg") },

@@ -458,4 +458,17 @@
     <string name="orient_auto">Авто</string>
     <string name="images_pdf_name">Изображения</string>
     <string name="make_pdf_n">Создать PDF (%d изобр.)</string>
+    <string name="file_converter">Конвертер файлов</string>
+    <string name="file_converter_sub">Word, Excel, PowerPoint, PDF, CSV, RTF...</string>
+    <string name="choose_file">Выберите файл</string>
+    <string name="detected_format">Определён формат: %s</string>
+    <string name="to_pdf">Конвертировать в PDF</string>
+    <string name="to_docx">Конвертировать в Word (DOCX)</string>
+    <string name="to_xlsx">Конвертировать в Excel (XLSX)</string>
+    <string name="to_images">Конвертировать в изображения (JPG)</string>
+    <string name="to_txt">Конвертировать в текст (TXT)</string>
+    <string name="no_conversions">Для этого типа файла нет конвертаций</string>
+    <string name="convert_to">Во что конвертировать?</string>
+    <string name="convert_failed">Конвертация не удалась</string>
+    <string name="docx_conv_note">При конвертации сохраняются текст, заголовки, жирный/курсив и ячейки таблиц; шрифты и цвета — стандартные.</string>
 </resources>
