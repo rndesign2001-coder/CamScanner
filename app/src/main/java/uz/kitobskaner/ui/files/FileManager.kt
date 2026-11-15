@@ -370,7 +370,7 @@ fun FilesScreen(onOpen: (Uri) -> Unit, bottomPadding: Dp = 110.dp) {
                     var m by remember { mutableStateOf(false) }
                     val fav = recent.any { it.uri == n.uri.toString() && it.fav }
                     Box {
-                        val open = { if (n.isDir) stack.add(n) else onOpen(n.uri) }
+                        val open: () -> Unit = { if (n.isDir) { stack.add(n); Unit } else onOpen(n.uri) }
                         if (grid) Column(
                             Modifier
                                 .clip(RoundedCornerShape(14.dp))
