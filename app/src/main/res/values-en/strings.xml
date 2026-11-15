@@ -413,4 +413,5 @@
     <string name="lay_blank">Blank</string>
     <string name="lay_caption">Content with caption</string>
     <string name="lay_pic_caption">Picture with caption</string>
+    <string name="add_page">New page</string>
 </resources>

@@ -1711,7 +1711,9 @@ if(window.matchMedia)window.matchMedia('print').addListener(function(m){if(m.mat
         if (img.isEmpty() && text.isEmpty() && bgColor == null && grad == null && line == null) return ""
         val sa = sid?.let { " data-s=\"$it\"" } ?: ""
         val phe = if (ph != null && paras.all { it.runs.isEmpty() }) " phe" else ""
-        return "<div class=\"sp$phe\"$sa style=\"$st\">$img$text</div>"
+        // guruh ichidagi shakllar: surib bo'lmaydi, lekin matni tahrirlanadi
+        val tx = if (sid == null && !decorOnly && paras.isNotEmpty()) " data-tx=\"1\"" else ""
+        return "<div class=\"sp$phe\"$sa$tx style=\"$st\">$img$text</div>"
     }
 
     private class PptRun(val text: String, val css: String, val size: Float, val br: Boolean = false, val id: String? = null, val obj: Boolean = false)

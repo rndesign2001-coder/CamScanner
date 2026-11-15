@@ -413,4 +413,5 @@
     <string name="lay_blank">Пустой слайд</string>
     <string name="lay_caption">Объект с подписью</string>
     <string name="lay_pic_caption">Рисунок с подписью</string>
+    <string name="add_page">Новая страница</string>
 </resources>

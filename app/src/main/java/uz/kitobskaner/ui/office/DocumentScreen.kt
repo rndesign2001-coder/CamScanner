@@ -155,6 +155,7 @@ import androidx.compose.material.icons.rounded.FindReplace
 import androidx.compose.material.icons.rounded.FormatLineSpacing
 import androidx.compose.material.icons.rounded.FormatListNumbered
 import androidx.compose.material.icons.rounded.HorizontalRule
+import androidx.compose.material.icons.rounded.NoteAdd
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.TableChart
@@ -1025,6 +1026,7 @@ private fun EditToolbar(
                     LabeledTool(Icons.Rounded.TableChart, stringResource(R.string.insert_table)) { onDialog("table") }
                     LabeledTool(Icons.Rounded.Image, stringResource(R.string.insert_image)) { onImage() }
                     LabeledTool(Icons.Rounded.HorizontalRule, stringResource(R.string.page_break)) { onJs("QO.insPB()") }
+                    LabeledTool(Icons.Rounded.NoteAdd, stringResource(R.string.add_page)) { onJs("QO.addPage()") }
                 }
                 if (word && t == 2) {
                     Box {
