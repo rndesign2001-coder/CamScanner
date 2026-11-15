@@ -523,6 +523,7 @@ body:not(.mobile) .pb{border:none;margin:0}
         val runCss = ps.run.css()
         // ro'yxat belgisi
         var prefix = ""
+        var olist: String? = null
         val numId = num[0] ?: ps.numId
         if (numId != null) {
             val lvl = num[1]?.toIntOrNull() ?: ps.numLvl
@@ -539,6 +540,7 @@ body:not(.mobile) .pb{border:none;margin:0}
                 "none" -> ""
                 else -> if (lvl % 2 == 0) "•" else "◦"
             }
+            olist = if (fmtName == "bullet" || fmtName == "none") "bullet" else "number"
             if (ps.indLeft == 0f) css.append("margin-left:${18 * (lvl + 1)}pt;")
             css.append("text-indent:-14pt;")
             prefix = "<span class=\"bul\" contenteditable=\"false\" style=\"display:inline-block;min-width:14pt;text-indent:0\">$prefix</span>"
@@ -548,7 +550,7 @@ body:not(.mobile) .pb{border:none;margin:0}
         val headingCss = if (ps.heading in 1..6) "font-weight:normal;" else ""
         if (ps.pbb) brk = "before"
         if (ps.sect && brk == null) brk = "after"
-        val attrs = (pid?.let { " data-p=\"$it\"" } ?: "") + (brk?.let { " data-brk=\"$it\"" } ?: "")
+        val attrs = (pid?.let { " data-p=\"$it\"" } ?: "") + (brk?.let { " data-brk=\"$it\"" } ?: "") + (olist?.let { " data-olist=\"$it\"" } ?: "")
         return "<$tag$attrs style=\"$css$headingCss$runCss\">$prefix$body</$tag>"
     }
 

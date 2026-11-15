@@ -128,6 +128,7 @@ fun MainScreen(
     onSign: () -> Unit,
     onBookCam: () -> Unit,
     onPdfOp: (String) -> Unit,
+    onNewDoc: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = App.instance
@@ -175,6 +176,7 @@ fun MainScreen(
         Tool(R.drawable.ic3d_book, R.string.src_bookcam, R.string.src_bookcam_hint, 0, onBookCam),
         Tool(R.drawable.ic3d_gallery, R.string.tool_images_pdf, R.string.tool_images_pdf_sub, 0) { source.gallery() },
         Tool(R.drawable.ic3d_ocr, R.string.tool_pdf_ocr, R.string.tool_pdf_ocr_sub, 0) { openPdf() },
+        Tool(R.drawable.ic3d_word, R.string.new_word, R.string.new_word_sub, 1) { onNewDoc("docx") },
         Tool(R.drawable.ic3d_folder, R.string.tool_open_doc, R.string.tool_open_doc_sub, 1) { openDoc() },
         Tool(R.drawable.ic3d_sign, R.string.tool_sign, R.string.tool_sign_sub, 1, onSign),
         Tool(R.drawable.ic3d_merge, R.string.tool_merge, R.string.tool_merge_sub, 1) { onPdfOp("merge") },

@@ -37,7 +37,7 @@ object OfficeEditor {
 
     // ---------------------------------------------------------------- paket
 
-    private class Pkg(val files: LinkedHashMap<String, ByteArray>) {
+    private class Pkg(val files: LinkedHashMap<String, ByteArray>, val images: Map<String, ByteArray> = emptyMap()) {
         val docs = LinkedHashMap<String, Document>()
         private val index = HashMap<String, Map<String, List<Element>>>()
         val deleted = HashSet<String>()
@@ -201,9 +201,9 @@ object OfficeEditor {
     // ---------------------------------------------------------------- umumiy kirish
 
     /** [kind]: "docx", "pptx", "xlsx". [json] — QO.collect() natijasi. */
-    fun apply(bytes: ByteArray, kind: String, json: String): ByteArray {
+    fun apply(bytes: ByteArray, kind: String, json: String, images: Map<String, ByteArray> = emptyMap()): ByteArray {
         val root = Json.parseToJsonElement(json).jsonObject
-        val pkg = Pkg(readZip(bytes))
+        val pkg = Pkg(readZip(bytes), images)
         when (kind) {
             "docx" -> docx(pkg, root)
             "pptx" -> pptx(pkg, root)
@@ -215,7 +215,7 @@ object OfficeEditor {
     /** O'zgarishlar bormi (bo'sh JSON emasmi). */
     fun hasChanges(json: String): Boolean = try {
         val o = Json.parseToJsonElement(json).jsonObject
-        listOf("paras", "cells", "removed", "boxes").any { (o[it] as? JsonArray)?.isNotEmpty() == true } ||
+        listOf("paras", "cells", "removed", "boxes", "tables").any { (o[it] as? JsonArray)?.isNotEmpty() == true } ||
             (o["moved"] as? JsonObject)?.isNotEmpty() == true
     } catch (_: Exception) {
         false
@@ -304,6 +304,8 @@ object OfficeEditor {
             }
         }
 
+        if (fl.docx) docxParaProps(pkg, p, pj)
+
         val rs = pj["rs"] as? JsonArray ?: JsonArray(emptyList())
         var lastKey: String? = null
         var lastT: Element? = null
@@ -313,6 +315,18 @@ object OfficeEditor {
             when {
                 s.has("o") -> {
                     runById(pkg, fl, s.str("o"))?.let { add(it.cloneNode(true)) }
+                    lastKey = null
+                }
+                s.has("img") -> {
+                    if (fl.docx) docxImageRun(pkg, doc, s.str("img") ?: "", s.num("w") ?: 200.0, s.num("h") ?: 150.0)?.let { add(it) }
+                    lastKey = null
+                }
+                s.has("pb") -> {
+                    if (fl.docx) {
+                        val r = doc.createElement("w:r")
+                        r.appendChild(doc.createElement("w:br").also { it.setAttribute("w:type", "page") })
+                        add(r)
+                    }
                     lastKey = null
                 }
                 s.has("br") -> {
@@ -415,6 +429,9 @@ object OfficeEditor {
             rPr.setOrdered("w:strike", RPR_ORDER, if (on) emptyMap() else mapOf("w:val" to "0"))
         }
         s.str("c")?.let { c -> rPr.setOrdered("w:color", RPR_ORDER, mapOf("w:val" to c)) }
+        s.str("ff")?.takeIf { it.isNotBlank() && it != "sans-serif" && it != "serif" }?.let { f ->
+            rPr.setOrdered("w:rFonts", RPR_ORDER, mapOf("w:ascii" to f, "w:hAnsi" to f, "w:cs" to f, "w:eastAsia" to f))
+        }
         s.num("sz")?.let { pt ->
             val v = (pt * 2).roundToLong().coerceIn(2, 3276).toString()
             rPr.setOrdered("w:sz", RPR_ORDER, mapOf("w:val" to v))
@@ -436,6 +453,12 @@ object OfficeEditor {
         s.bool("u")?.let { rPr.setAttribute("u", if (it) "sng" else "none") }
         s.bool("s")?.let { rPr.setAttribute("strike", if (it) "sngStrike" else "noStrike") }
         s.num("sz")?.let { rPr.setAttribute("sz", (it * 100).roundToLong().coerceIn(100, 400000).toString()) }
+        s.str("ff")?.takeIf { it.isNotBlank() && it != "sans-serif" && it != "serif" }?.let { f ->
+            rPr.kids().filter { it.tagName == "a:latin" || it.tagName == "a:cs" }.forEach { rPr.removeChild(it) }
+            val lat = rPr.make("a:latin", "typeface" to f)
+            val before = rPr.kids().firstOrNull { it.tagName in listOf("a:ea", "a:sym", "a:hlinkClick", "a:hlinkMouseOver", "a:rtl", "a:extLst") }
+            if (before == null) rPr.appendChild(lat) else rPr.insertBefore(lat, before)
+        }
         s.str("c")?.let { c ->
             rPr.kids().filter { it.tagName in pptFills }.forEach { rPr.removeChild(it) }
             val fill = rPr.make("a:solidFill")
@@ -471,8 +494,282 @@ object OfficeEditor {
 
     private fun docx(pkg: Pkg, root: JsonObject) {
         val fl = Flavor(true, { if (it == "d") "word/document.xml" else null }, HtmlRenderer.DOCX_TAGS)
+        pkg.doc("word/document.xml", fl.tags)
         paragraphs(pkg, root, fl)
+        (root["tables"] as? JsonArray)?.forEach { insertDocxTable(pkg, fl, it.jsonObject) }
         pkg.docs["word/document.xml"]?.let { ensureParagraphs(it, "w:tc", "w:p") }
+    }
+
+    // ---------------------------------------------------------------- DOCX: paragraf xususiyatlari, jadval, rasm
+
+    private fun Element.ensure(name: String, order: List<String>): Element {
+        child(name)?.let { return it }
+        val e = ownerDocument.createElement(name)
+        val idx = order.indexOf(name)
+        val before = kids().firstOrNull { k -> order.indexOf(k.tagName).let { it >= 0 && it > idx } }
+        if (before == null) appendChild(e) else insertBefore(e, before)
+        return e
+    }
+
+    private fun docxParaProps(pkg: Pkg, p: Element, pj: JsonObject) {
+        val l = pj.str("l")
+        val ind = (pj["ind"] as? JsonPrimitive)?.intOrNull ?: 0
+        val ls = pj.num("ls")
+        val sa = pj.num("sa")
+        if (l == null && ind == 0 && ls == null && sa == null) return
+        val doc = p.ownerDocument
+        val pPr = p.child("w:pPr") ?: doc.createElement("w:pPr").also { p.insertBefore(it, p.firstChild) }
+        if (l != null) {
+            pPr.kids().filter { it.tagName == "w:numPr" }.forEach { pPr.removeChild(it) }
+            val numId = when (l) { "bullet" -> listNum(pkg, false); "number" -> listNum(pkg, true); else -> "0" }
+            val np = pPr.ensure("w:numPr", PPR_ORDER)
+            np.appendChild(doc.createElement("w:ilvl").also { it.setAttribute("w:val", "0") })
+            np.appendChild(doc.createElement("w:numId").also { it.setAttribute("w:val", numId) })
+            if (l == "none") pPr.child("w:ind")?.let { i -> i.removeAttribute("w:hanging") }
+        }
+        if (ind != 0) {
+            val e = pPr.ensure("w:ind", PPR_ORDER)
+            val cur = (e.getAttribute("w:left").ifEmpty { e.getAttribute("w:start") }).toIntOrNull() ?: if (l == "bullet" || l == "number") 720 else 0
+            val v = (cur + ind * 720).coerceAtLeast(0)
+            e.setAttribute("w:left", v.toString())
+            if (e.hasAttribute("w:start")) e.setAttribute("w:start", v.toString())
+        }
+        if (ls != null || sa != null) {
+            val e = pPr.ensure("w:spacing", PPR_ORDER)
+            ls?.let { e.setAttribute("w:line", (it * 240).roundToLong().toString()); e.setAttribute("w:lineRule", "auto") }
+            sa?.let { e.setAttribute("w:after", (it * 20).roundToLong().toString()) }
+        }
+    }
+
+    private val W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    private val R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+    /** Ro'yxat ta'rifi (numbering.xml): kerak bo'lsa yaratadi, numId qaytaradi. */
+    private fun listNum(pkg: Pkg, numbered: Boolean): String {
+        val path = "word/numbering.xml"
+        var d = pkg.doc(path)
+        if (d == null) {
+            pkg.files[path] = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:numbering xmlns:w=\"$W_NS\"/>".toByteArray()
+            d = pkg.doc(path)!!
+            addRel(pkg, "word/document.xml", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering", "numbering.xml")
+            addOverride(pkg, "/word/numbering.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml")
+        }
+        val marker = if (numbered) "qo-number" else "qo-bullet"
+        // avval yaratganimiz bo'lsa — qayta ishlatamiz
+        val abs = d.getElementsByTagName("w:abstractNum")
+        var absId: String? = null
+        var maxAbs = 0
+        for (i in 0 until abs.length) {
+            val e = abs.item(i) as Element
+            e.getAttribute("w:abstractNumId").toIntOrNull()?.let { if (it > maxAbs) maxAbs = it }
+            if (e.child("w:name")?.getAttribute("w:val") == marker) absId = e.getAttribute("w:abstractNumId")
+        }
+        val nums = d.getElementsByTagName("w:num")
+        var maxNum = 0
+        for (i in 0 until nums.length) {
+            val e = nums.item(i) as Element
+            e.getAttribute("w:numId").toIntOrNull()?.let { if (it > maxNum) maxNum = it }
+            if (absId != null && e.child("w:abstractNumId")?.getAttribute("w:val") == absId) return e.getAttribute("w:numId")
+        }
+        val root = d.documentElement
+        if (absId == null) {
+            absId = (maxAbs + 1).toString()
+            val a = fragment(d, """<w:abstractNum w:abstractNumId="$absId"><w:multiLevelType w:val="hybridMultilevel"/><w:name w:val="$marker"/>""" +
+                (0 until 9).joinToString("") { lvl ->
+                    val left = 720 * (lvl + 1)
+                    if (numbered) """<w:lvl w:ilvl="$lvl"><w:start w:val="1"/><w:numFmt w:val="${listOf("decimal", "lowerLetter", "lowerRoman")[lvl % 3]}"/><w:lvlText w:val="%${lvl + 1}."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$left" w:hanging="360"/></w:pPr></w:lvl>"""
+                    else """<w:lvl w:ilvl="$lvl"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="${listOf("•", "◦", "▪")[lvl % 3]}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$left" w:hanging="360"/></w:pPr></w:lvl>"""
+                } + "</w:abstractNum>")
+            val firstNum = root.kids().firstOrNull { it.tagName == "w:num" || it.tagName == "w:numIdMacAtCleanup" }
+            if (firstNum != null) root.insertBefore(a, firstNum) else root.appendChild(a)
+        }
+        val numId = (maxNum + 1).toString()
+        val n = fragment(d, """<w:num w:numId="$numId"><w:abstractNumId w:val="$absId"/></w:num>""")
+        val cleanup = root.child("w:numIdMacAtCleanup")
+        if (cleanup != null) root.insertBefore(n, cleanup) else root.appendChild(n)
+        return numId
+    }
+
+    /** XML bo'lagini (prefikslar bilan) shu hujjatga import qiladi. */
+    private fun fragment(d: Document, xml: String): Element {
+        val f = parse("<?xml version=\"1.0\" encoding=\"UTF-8\"?><qo-root>$xml</qo-root>".toByteArray(Charsets.UTF_8))
+        val first = f.documentElement.kids().first()
+        return d.importNode(first, true) as Element
+    }
+
+    private fun addRel(pkg: Pkg, source: String, type: String, target: String): String {
+        val rp = relsPath(source)
+        if (!pkg.files.containsKey(rp)) pkg.files[rp] = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"/>".toByteArray()
+        val d = pkg.doc(rp)!!
+        val ids = HashSet<String>()
+        val nl = d.getElementsByTagName("Relationship")
+        for (i in 0 until nl.length) ids += (nl.item(i) as Element).getAttribute("Id")
+        var k = ids.size + 1
+        while ("rIdQ$k" in ids) k++
+        val e = d.createElement("Relationship")
+        e.setAttribute("Id", "rIdQ$k"); e.setAttribute("Type", type); e.setAttribute("Target", target)
+        d.documentElement.appendChild(e)
+        return "rIdQ$k"
+    }
+
+    private fun addOverride(pkg: Pkg, part: String, ct: String) {
+        val d = pkg.doc("[Content_Types].xml") ?: return
+        val nl = d.getElementsByTagName("Override")
+        for (i in 0 until nl.length) if ((nl.item(i) as Element).getAttribute("PartName") == part) return
+        val o = d.createElement("Override")
+        o.setAttribute("PartName", part); o.setAttribute("ContentType", ct)
+        d.documentElement.appendChild(o)
+    }
+
+    private fun addDefault(pkg: Pkg, ext: String, ct: String) {
+        val d = pkg.doc("[Content_Types].xml") ?: return
+        val nl = d.getElementsByTagName("Default")
+        for (i in 0 until nl.length) if ((nl.item(i) as Element).getAttribute("Extension").equals(ext, true)) return
+        val o = d.createElement("Default")
+        o.setAttribute("Extension", ext); o.setAttribute("ContentType", ct)
+        d.documentElement.insertBefore(o, d.documentElement.firstChild)
+    }
+
+    private fun ensureNs(root: Element, vararg ns: Pair<String, String>) {
+        for ((k, v) in ns) if (!root.hasAttribute(k)) root.setAttribute(k, v)
+    }
+
+    /** Yangi rasm: word/media ga qo'shadi, munosabat yaratadi, w:drawing run qaytaradi. */
+    private fun docxImageRun(pkg: Pkg, doc: Document, key: String, wPt: Double, hPt: Double): Element? {
+        val bytes = pkg.images[key] ?: return null
+        val png = bytes.size > 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte()
+        val ext = if (png) "png" else "jpeg"
+        var n = 1
+        while (pkg.files.containsKey("word/media/qo_image$n.$ext")) n++
+        val path = "word/media/qo_image$n.$ext"
+        pkg.files[path] = bytes
+        addDefault(pkg, ext, if (png) "image/png" else "image/jpeg")
+        val rid = addRel(pkg, "word/document.xml", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", "media/qo_image$n.$ext")
+        ensureNs(doc.documentElement,
+            "xmlns:wp" to "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+            "xmlns:r" to R_NS,
+            "xmlns:a" to "http://schemas.openxmlformats.org/drawingml/2006/main",
+            "xmlns:pic" to "http://schemas.openxmlformats.org/drawingml/2006/picture")
+        var maxDoc = 0
+        val dp = doc.getElementsByTagName("wp:docPr")
+        for (i in 0 until dp.length) (dp.item(i) as Element).getAttribute("id").toIntOrNull()?.let { if (it > maxDoc) maxDoc = it }
+        val id = maxDoc + 1
+        val cx = emu(wPt); val cy = emu(hPt)
+        return fragment(doc, """<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Picture $id"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="$id" name="qo_image$n.$ext"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="$rid"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>""")
+    }
+
+    private fun insertDocxTable(pkg: Pkg, fl: Flavor, t: JsonObject) {
+        val d = pkg.docs["word/document.xml"] ?: return
+        val body = d.getElementsByTagName("w:body").item(0) as? Element ?: return
+        val rows = t["rows"] as? JsonArray ?: return
+        val cols = rows.maxOfOrNull { (it as? JsonArray)?.size ?: 0 } ?: 0
+        if (cols == 0) return
+        // jadval tanadagi (w:body) blokdan keyin qo'yiladi
+        var anchor: Node? = id(t.str("after"))?.let { i -> pkg.el("word/document.xml", i.tag, i.n) }
+        while (anchor != null && anchor.parentNode != null && anchor.parentNode !== body) anchor = anchor.parentNode
+        if (anchor?.parentNode == null) anchor = null
+        // sahifa sozlamalari va jadval o'lchami
+        val sect = body.kids().lastOrNull { it.tagName == "w:sectPr" }
+        val pgW = sect?.child("w:pgSz")?.getAttribute("w:w")?.toIntOrNull() ?: 11906
+        val mar = sect?.child("w:pgMar")?.let { (it.getAttribute("w:left").toIntOrNull() ?: 1440) + (it.getAttribute("w:right").toIntOrNull() ?: 1440) } ?: 2880
+        val colW = ((pgW - mar) / cols).coerceAtLeast(400)
+        val sb = StringBuilder("<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>")
+        for (b in listOf("top", "left", "bottom", "right", "insideH", "insideV")) sb.append("<w:$b w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>")
+        sb.append("</w:tblBorders><w:tblLook w:val=\"04A0\"/></w:tblPr><w:tblGrid>")
+        repeat(cols) { sb.append("<w:gridCol w:w=\"$colW\"/>") }
+        sb.append("</w:tblGrid>")
+        for (r in rows) {
+            sb.append("<w:tr>")
+            val cells = r as? JsonArray ?: continue
+            for (c in 0 until cols) sb.append("<w:tc><w:tcPr><w:tcW w:w=\"$colW\" w:type=\"dxa\"/></w:tcPr><w:p/></w:tc>")
+            sb.append("</w:tr>")
+        }
+        sb.append("</w:tbl>")
+        val tbl = fragment(d, sb.toString())
+        // kataklar matni
+        val trs = tbl.kids().filter { it.tagName == "w:tr" }
+        rows.forEachIndexed { ri, r ->
+            val tcs = trs.getOrNull(ri)?.kids()?.filter { it.tagName == "w:tc" } ?: return@forEachIndexed
+            (r as? JsonArray)?.forEachIndexed { ci, cj ->
+                val tc = tcs.getOrNull(ci) ?: return@forEachIndexed
+                val paras = cj as? JsonArray ?: return@forEachIndexed
+                val first = tc.child("w:p")!!
+                var prev: Element = first
+                paras.forEachIndexed { k, pj ->
+                    val target = if (k == 0) first else d.createElement("w:p").also { insertAfter(prev, it) }
+                    rebuild(pkg, fl, target, pj.jsonObject)
+                    prev = target
+                }
+            }
+        }
+        if (anchor != null) insertAfter(anchor, tbl) else if (sect != null) body.insertBefore(tbl, sect) else body.appendChild(tbl)
+        // jadvaldan keyin paragraf bo'lishi shart
+        val next = tbl.nextSibling.let { var n = it; while (n != null && n !is Element) n = n.nextSibling; n as Element? }
+        if (next == null || next.tagName != "w:p") insertAfter(tbl, d.createElement("w:p"))
+    }
+
+    // ---------------------------------------------------------------- DOCX: yangi hujjat, sahifa sozlamalari
+
+    /** Bo'sh, Word/WPS/LibreOffice'da ochiladigan DOCX (A4, Calibri 11, sarlavha uslublari). */
+    fun newDocx(): ByteArray {
+        val files = LinkedHashMap<String, ByteArray>()
+        val decl = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
+        files["[Content_Types].xml"] = (decl + """<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>""").toByteArray()
+        files["_rels/.rels"] = (decl + """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>""").toByteArray()
+        files["docProps/core.xml"] = (decl + """<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>QulayOfis</dc:creator></cp:coreProperties>""").toByteArray()
+        files["docProps/app.xml"] = (decl + """<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>QulayOfis</Application></Properties>""").toByteArray()
+        files["word/_rels/document.xml.rels"] = (decl + """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>""").toByteArray()
+        files["word/document.xml"] = (decl + """<w:document xmlns:w="$W_NS" xmlns:r="$R_NS" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body><w:p/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="850" w:bottom="1134" w:left="1701" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>""").toByteArray()
+        fun heading(id: String, name: String, sz: Int, lvl: Int) =
+            """<w:style w:type="paragraph" w:styleId="$id"><w:name w:val="$name"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="80"/><w:outlineLvl w:val="$lvl"/></w:pPr><w:rPr><w:b/><w:color w:val="1F3864"/><w:sz w:val="$sz"/></w:rPr></w:style>"""
+        files["word/styles.xml"] = (decl + """<w:styles xmlns:w="$W_NS"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="uz-Latn-UZ"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>""" +
+            heading("Heading1", "heading 1", 32, 0) + heading("Heading2", "heading 2", 26, 1) + heading("Heading3", "heading 3", 24, 2) +
+            """<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="120"/></w:pPr><w:rPr><w:sz w:val="56"/></w:rPr></w:style><w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>""").toByteArray()
+        val bo = ByteArrayOutputStream()
+        ZipOutputStream(bo).use { z -> for ((k, v) in files) { z.putNextEntry(ZipEntry(k)); z.write(v); z.closeEntry() } }
+        return bo.toByteArray()
+    }
+
+    /** Sahifa sozlamalari: yo'nalish, chegaralar (pt), sahifa raqamlari va yuqori kolontitul matni. */
+    fun pageSetup(bytes: ByteArray, landscape: Boolean, marginPt: Double, pageNumbers: Boolean, header: String?): ByteArray {
+        val pkg = Pkg(readZip(bytes))
+        val d = pkg.doc("word/document.xml") ?: return bytes
+        val body = d.getElementsByTagName("w:body").item(0) as? Element ?: return bytes
+        val sect = body.kids().lastOrNull { it.tagName == "w:sectPr" } ?: d.createElement("w:sectPr").also { body.appendChild(it) }
+        val order = listOf("w:headerReference", "w:footerReference", "w:footnotePr", "w:endnotePr", "w:type", "w:pgSz", "w:pgMar", "w:paperSrc", "w:pgBorders", "w:lnNumType", "w:pgNumType", "w:cols", "w:formProt", "w:vAlign", "w:noEndnote", "w:titlePg", "w:textDirection", "w:bidi", "w:rtlGutter", "w:docGrid", "w:printerSettings", "w:sectPrChange")
+        val sz = sect.ensure("w:pgSz", order)
+        var w = sz.getAttribute("w:w").toIntOrNull() ?: 11906
+        var h = sz.getAttribute("w:h").toIntOrNull() ?: 16838
+        if (landscape != (w > h)) { val t = w; w = h; h = t }
+        sz.setAttribute("w:w", w.toString()); sz.setAttribute("w:h", h.toString())
+        if (landscape) sz.setAttribute("w:orient", "landscape") else sz.removeAttribute("w:orient")
+        val mar = sect.ensure("w:pgMar", order)
+        val m = (marginPt * 20).roundToLong().toString()
+        for (k in listOf("w:top", "w:bottom", "w:left", "w:right")) mar.setAttribute(k, m)
+        if (!mar.hasAttribute("w:header")) mar.setAttribute("w:header", "708")
+        if (!mar.hasAttribute("w:footer")) mar.setAttribute("w:footer", "708")
+        if (!mar.hasAttribute("w:gutter")) mar.setAttribute("w:gutter", "0")
+        ensureNs(d.documentElement, "xmlns:r" to R_NS)
+        fun part(kind: String, xml: String) {
+            var n = 1
+            while (pkg.files.containsKey("word/${kind}_qo$n.xml")) n++
+            val path = "word/${kind}_qo$n.xml"
+            pkg.files[path] = ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n" + xml).toByteArray()
+            addOverride(pkg, "/$path", "application/vnd.openxmlformats-officedocument.wordprocessingml.$kind+xml")
+            val rid = addRel(pkg, "word/document.xml", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/$kind", "${kind}_qo$n.xml")
+            val refName = if (kind == "header") "w:headerReference" else "w:footerReference"
+            sect.kids().filter { it.tagName == refName && it.getAttribute("w:type") == "default" }.forEach { sect.removeChild(it) }
+            val ref = d.createElement(refName)
+            ref.setAttribute("w:type", "default"); ref.setAttribute("r:id", rid)
+            val before = sect.kids().firstOrNull { order.indexOf(it.tagName) > order.indexOf(refName) }
+            if (before == null) sect.appendChild(ref) else sect.insertBefore(ref, before)
+        }
+        if (pageNumbers) part("footer", """<w:ftr xmlns:w="$W_NS" xmlns:r="$R_NS"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple></w:p></w:ftr>""")
+        if (!header.isNullOrBlank()) {
+            val esc = header.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            part("header", """<w:hdr xmlns:w="$W_NS" xmlns:r="$R_NS"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">$esc</w:t></w:r></w:p></w:hdr>""")
+        }
+        return pkg.bytes()
     }
 
     // ---------------------------------------------------------------- PPTX

@@ -126,6 +126,23 @@ import uz.kitobskaner.office.Fmt
 import uz.kitobskaner.office.FormatSniffer
 import uz.kitobskaner.office.HtmlRenderer
 import uz.kitobskaner.office.OfficeEditor
+import uz.kitobskaner.office.Recovery
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.automirrored.rounded.FormatIndentDecrease
+import androidx.compose.material.icons.automirrored.rounded.FormatIndentIncrease
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.FindReplace
+import androidx.compose.material.icons.rounded.FormatLineSpacing
+import androidx.compose.material.icons.rounded.FormatListNumbered
+import androidx.compose.material.icons.rounded.HorizontalRule
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.TableChart
+import androidx.compose.material.icons.rounded.Tag
+import androidx.compose.material.icons.rounded.VerticalAlignBottom
 import uz.kitobskaner.ui.components.ProgressDialog
 import uz.kitobskaner.ui.components.toast
 import java.io.File
@@ -171,6 +188,7 @@ fun DocumentScreen(
     onOpenFile: (File) -> Unit,
     onSign: (Uri) -> Unit,
     onCompress: (String) -> Unit,
+    startEditing: Boolean = false,
 ) {
     val context = LocalContext.current
     val app = App.instance
@@ -202,6 +220,14 @@ fun DocumentScreen(
     var leave by remember { mutableStateOf<(() -> Unit)?>(null) }
     var afterSave by remember { mutableStateOf<(() -> Unit)?>(null) }
     var pendingSlide by remember { mutableIntStateOf(-1) }
+    // yangi qo'yilgan rasmlar (kalit → JPEG baytlari) — saqlashda faylga qo'shiladi
+    val newImages = remember { HashMap<String, ByteArray>() }
+    var imgSeq by remember { mutableIntStateOf(0) }
+    var domDirty by remember { mutableStateOf(false) }
+    var origHash by remember { mutableStateOf<String?>(null) }
+    var recoverOffer by remember { mutableStateOf<Pair<ByteArray, Long>?>(null) }
+    var dialog by remember { mutableStateOf<String?>(null) }
+    var statsJson by remember { mutableStateOf<String?>(null) }
     val web = remember { WebController() }
     val errOpen = stringResource(R.string.err_open_doc)
     val errEnc = stringResource(R.string.err_encrypted)
@@ -211,6 +237,9 @@ fun DocumentScreen(
     val savedFallback = stringResource(R.string.saved_copy_fallback)
     val lastSlideMsg = stringResource(R.string.last_slide)
     val newText = stringResource(R.string.new_text)
+    val conflictMsg = stringResource(R.string.conflict_saved)
+    val needCursorMsg = stringResource(R.string.need_cursor)
+    val replacedFmt = stringResource(R.string.replaced_n)
 
     suspend fun render(bytes: ByteArray) {
         val html = withContext(Dispatchers.Default) {
@@ -241,7 +270,12 @@ fun DocumentScreen(
             val bytes = readOriginal()
             kind = withContext(Dispatchers.Default) { FormatSniffer.detect(bytes, name, context.contentResolver.getType(uri)) }
             if (kind == Fmt.PDF) { loading = false; return@LaunchedEffect }
-            if (kind.editable) work = bytes
+            if (kind.editable) {
+                work = bytes
+                origHash = withContext(Dispatchers.Default) { Recovery.hash(bytes) }
+                recoverOffer = withContext(Dispatchers.IO) { Recovery.load(context, uri) }
+                if (startEditing && recoverOffer == null) editing = true
+            }
             if (kind == Fmt.TXT || kind == Fmt.CSV) text = HtmlRenderer.decodeText(bytes)
             if (kind != Fmt.UNKNOWN && kind != Fmt.TXT) render(bytes)
         } catch (e: HtmlRenderer.EncryptedException) {
@@ -270,7 +304,16 @@ fun DocumentScreen(
         val w = work ?: return null
         val json = jsString(web.call("QO.collect()")) ?: return w
         if (!OfficeEditor.hasChanges(json)) return w
-        return withContext(Dispatchers.Default) { OfficeEditor.apply(w, kindStr, json) }
+        val imgs = HashMap(newImages)
+        return withContext(Dispatchers.Default) { OfficeEditor.apply(w, kindStr, json, imgs) }
+    }
+
+    /** Ish nusxasini almashtiradi (qo'shilgan rasmlar endi faylning ichida). */
+    fun setWork(b: ByteArray, dirtyNow: Boolean) {
+        work = b
+        newImages.clear()
+        unsaved = dirtyNow
+        if (dirtyNow) scope.launch(Dispatchers.IO) { try { Recovery.save(context, uri, b) } catch (_: Exception) {} }
     }
 
     suspend fun hasPending(): Boolean = unsaved || web.call("QO.changed()") == "true"
@@ -294,9 +337,20 @@ fun DocumentScreen(
         scope.launch {
             busy = true
             try {
-                val wrote = original && withContext(Dispatchers.IO) {
+                // boshqa ilova faylni o'zgartirganmi (ziddiyat) — unda ustiga yozmaymiz
+                val conflict = original && withContext(Dispatchers.IO) {
                     try {
-                        context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } != null
+                        val now = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        now != null && origHash != null && Recovery.hash(now) != origHash
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                val wrote = original && !conflict && withContext(Dispatchers.IO) {
+                    try {
+                        // yoziladi, so'ng qayta o'qib tekshiriladi
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes); it.flush() } != null &&
+                            context.contentResolver.openInputStream(uri)?.use { Recovery.hash(it.readBytes()) } == Recovery.hash(bytes)
                     } catch (_: Exception) {
                         false
                     }
@@ -304,10 +358,16 @@ fun DocumentScreen(
                 val msg = if (wrote) savedOriginal else {
                     val f = withContext(Dispatchers.IO) { app.exporter.uniqueFile(app.exporter.safeName(base), ext).also { it.writeBytes(bytes) } }
                     app.exporter.refreshFiles()
-                    if (original) savedFallback else "$savedMsg: ${f.name}"
+                    when {
+                        conflict -> conflictMsg
+                        original -> savedFallback
+                        else -> "$savedMsg: ${f.name}"
+                    }
                 }
-                work = bytes
-                unsaved = false
+                if (wrote) origHash = withContext(Dispatchers.Default) { Recovery.hash(bytes) }
+                setWork(bytes, false)
+                domDirty = false
+                withContext(Dispatchers.IO) { Recovery.clear(context, uri) }
                 toast(context, msg)
                 if (after != null) after() else {
                     pendingSlide = if (kind == Fmt.PPTX) (web.call("QO.cur()")?.toIntOrNull() ?: -1) else -1
@@ -330,8 +390,7 @@ fun DocumentScreen(
                 val cur = web.call("QO.cur()")?.toIntOrNull() ?: 0
                 val nb = withContext(Dispatchers.Default) { if (dup) OfficeEditor.duplicateSlide(b, cur) else OfficeEditor.deleteSlide(b, cur) }
                 if (!dup && nb === b) toast(context, lastSlideMsg)
-                if (nb !== before) unsaved = true
-                work = nb
+                setWork(nb, unsaved || nb !== before)
                 pendingSlide = if (dup) cur + 1 else maxOf(0, cur - 1)
                 render(nb)
             } catch (e: Throwable) {
@@ -342,13 +401,40 @@ fun DocumentScreen(
         }
     }
 
+    fun pageSetup(landscape: Boolean, margin: Double, numbers: Boolean, header: String) {
+        scope.launch {
+            busy = true
+            try {
+                val b = pending() ?: return@launch
+                val nb = withContext(Dispatchers.Default) { OfficeEditor.pageSetup(b, landscape, margin, numbers, header) }
+                setWork(nb, true)
+                render(nb)
+            } catch (e: Throwable) {
+                toast(context, e.message ?: e.javaClass.simpleName)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun insertImage(u: Uri) {
+        scope.launch {
+            val r = withContext(Dispatchers.Default) { prepareImage(context, u) } ?: return@launch
+            val k = "${++imgSeq}"
+            newImages[k] = r.bytes
+            val src = "data:image/jpeg;base64," + android.util.Base64.encodeToString(r.bytes, android.util.Base64.NO_WRAP)
+            web.eval("QO.insImg('$k','$src',${r.wPt},${r.hPt})") { res -> if (res != "true") { newImages.remove(k); toast(context, needCursorMsg) } }
+        }
+    }
+
     fun discardAnd(action: () -> Unit) {
         scope.launch {
             busy = true
             try {
                 val b = readOriginal()
-                work = b
-                unsaved = false
+                setWork(b, false)
+                domDirty = false
+                withContext(Dispatchers.IO) { Recovery.clear(context, uri) }
                 action()
                 render(b)
             } catch (e: Throwable) {
@@ -369,6 +455,38 @@ fun DocumentScreen(
     fun goBack() {
         if (!office || (!editing && !unsaved)) { onBack(); return }
         scope.launch { if (hasPending()) leave = onBack else onBack() }
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u -> if (u != null) insertImage(u) }
+
+    // avtosaqlash: tahrir paytida holat kuzatiladi, ~20 soniyada bir ichki xotiraga yoziladi
+    LaunchedEffect(editing) {
+        var tick = 0
+        while (editing) {
+            kotlinx.coroutines.delay(3_000)
+            domDirty = web.call("QO.changed()") == "true"
+            if ((domDirty || unsaved) && ++tick % 7 == 0) {
+                try {
+                    val b = pending()
+                    if (b != null) withContext(Dispatchers.IO) { Recovery.save(context, uri, b) }
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+    // ilova fonga o'tganda ham saqlab qo'yamiz
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && office && (editing || unsaved)) scope.launch {
+                try {
+                    if (hasPending()) pending()?.let { b -> withContext(Dispatchers.IO) { Recovery.save(context, uri, b) } }
+                } catch (_: Exception) {
+                }
+            }
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
     }
 
     BackHandler(enabled = office && (editing || unsaved)) { if (editing && !unsaved) exitEdit() else goBack() }
@@ -398,10 +516,14 @@ fun DocumentScreen(
                     else IconButton(onClick = { goBack() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null) }
                 },
                 title = {
-                    Text(
-                        if (editing) stringResource(R.string.edit) else name, maxLines = 1,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(name, maxLines = 1, style = MaterialTheme.typography.titleMedium)
+                        if (office && (editing || unsaved)) Text(
+                            stringResource(if (unsaved || domDirty) R.string.status_unsaved else R.string.status_saved),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (unsaved || domDirty) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 },
                 actions = {
                     when {
@@ -504,6 +626,10 @@ fun DocumentScreen(
                         onAddBox = { web.eval("QO.addBox(${Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(newText))})") },
                         onDupSlide = { slideOp(true) },
                         onDelSlide = { slideOp(false) },
+                        onImage = { imagePicker.launch("image/*") },
+                        onDialog = { d ->
+                            if (d == "count") web.eval("QO.stats()") { statsJson = jsString(it); dialog = d } else dialog = d
+                        },
                     )
                 }
                 kind == Fmt.TXT -> OutlinedTextField(
@@ -565,7 +691,77 @@ fun DocumentScreen(
             },
         )
     }
+    when (dialog) {
+        "table" -> TableDialog(onDismiss = { dialog = null }) { r, c ->
+            dialog = null
+            web.eval("QO.insTable($r,$c)") { res -> if (res != "true") toast(context, needCursorMsg) }
+        }
+        "find" -> FindReplaceDialog(onDismiss = { dialog = null }) { f, r, mc ->
+            web.eval("QO.replaceAll(${jsLit(f)},${jsLit(r)},$mc)") { res -> toast(context, String.format(replacedFmt, res?.toIntOrNull() ?: 0)) }
+        }
+        "count" -> StatsDialog(statsJson, onDismiss = { dialog = null })
+        "page" -> PageSetupDialog(onDismiss = { dialog = null }) { land, margin, nums, header ->
+            dialog = null
+            pageSetup(land, margin, nums, header)
+        }
+    }
+
+    recoverOffer?.let { (bytes, time) ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.recover_title)) },
+            text = {
+                Text(stringResource(R.string.recover_msg, java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(time))))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    recoverOffer = null
+                    scope.launch {
+                        setWork(bytes, true)
+                        editing = true
+                        render(bytes)
+                    }
+                }) { Text(stringResource(R.string.recover_yes)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    recoverOffer = null
+                    scope.launch(Dispatchers.IO) { Recovery.clear(context, uri) }
+                    if (startEditing) editing = true
+                }) { Text(stringResource(R.string.recover_no)) }
+            },
+        )
+    }
     if (busy) ProgressDialog(stringResource(R.string.preparing), null)
+}
+
+private fun jsLit(s: String) = Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(s))
+
+private class PreparedImage(val bytes: ByteArray, val wPt: Int, val hPt: Int)
+
+/** Rasmni hujjatga qo'yish uchun tayyorlaydi: EXIF burilishi, 1600 px gacha, JPEG 85%. */
+private fun prepareImage(context: android.content.Context, u: Uri): PreparedImage? = try {
+    val raw = context.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: throw IllegalStateException()
+    val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size, o)
+    var sample = 1
+    while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= 1600) sample *= 2
+    var bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        ?: throw IllegalStateException()
+    val rot = try {
+        when (androidx.exifinterface.media.ExifInterface(raw.inputStream()).getAttributeInt(androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION, 1)) {
+            6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f
+        }
+    } catch (_: Exception) { 0f }
+    if (rot != 0f) bmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(rot) }, true)
+    val scale = minOf(1f, 1600f / maxOf(bmp.width, bmp.height))
+    if (scale < 1f) bmp = android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true)
+    val bo = java.io.ByteArrayOutputStream()
+    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bo)
+    val wPt = minOf(420f, bmp.width * 0.75f)
+    PreparedImage(bo.toByteArray(), wPt.toInt(), (wPt * bmp.height / bmp.width).toInt())
+} catch (_: Exception) {
+    null
 }
 
 // ---------------------------------------------------------------- tahrirlash paneli
@@ -574,6 +770,8 @@ private val textColors = listOf(
     "#000000", "#FFFFFF", "#E53935", "#FB8C00", "#FDD835", "#43A047", "#00ACC1", "#1E6BFF", "#8E24AA", "#6D4C41", "#757575",
 )
 private val markColors = listOf("transparent", "#FFF176", "#A5D6A7", "#81D4FA", "#F48FB1", "#FFCC80", "#E0E0E0")
+private val fontNames = listOf("Calibri", "Arial", "Times New Roman", "Georgia", "Verdana", "Tahoma", "Courier New")
+private val fontSizes = listOf(8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72)
 
 @Composable
 private fun EditToolbar(
@@ -584,9 +782,12 @@ private fun EditToolbar(
     onAddBox: () -> Unit,
     onDupSlide: () -> Unit,
     onDelSlide: () -> Unit,
+    onImage: () -> Unit,
+    onDialog: (String) -> Unit,
 ) {
-    var colorMenu by remember { mutableStateOf(false) }
-    var markMenu by remember { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var menu by remember { mutableStateOf<String?>(null) }
+    val word = kind == Fmt.DOCX
     Surface(tonalElevation = 6.dp, shadowElevation = 12.dp, color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth()) {
             val hint = when {
@@ -598,16 +799,55 @@ private fun EditToolbar(
                 hint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 6.dp),
             )
+            if (word) Row(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                listOf(R.string.tab_home, R.string.tab_insert, R.string.tab_layout, R.string.tab_review).forEachIndexed { i, t ->
+                    val on = tab == i
+                    Text(
+                        stringResource(t),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
+                            .clickable { tab = i }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
             Row(
                 Modifier
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Tool(Icons.AutoMirrored.Rounded.Undo) { onJs("QO.cmd('undo')") }
-                Tool(Icons.AutoMirrored.Rounded.Redo) { onJs("QO.cmd('redo')") }
-                if (kind != Fmt.XLSX) {
+                val t = if (word) tab else 0
+                if (t == 0) {
+                    Tool(Icons.AutoMirrored.Rounded.Undo) { onJs("QO.cmd('undo')") }
+                    Tool(Icons.AutoMirrored.Rounded.Redo) { onJs("QO.cmd('redo')") }
+                }
+                if (kind != Fmt.XLSX && t == 0) {
                     Sep()
+                    if (word || kind == Fmt.PPTX) {
+                        Box {
+                            TextChip(stringResource(R.string.font_family), enabled = !moveMode) { menu = "font" }
+                            DropdownMenu(expanded = menu == "font", onDismissRequest = { menu = null }) {
+                                fontNames.forEach { f ->
+                                    DropdownMenuItem(text = { Text(f) }, onClick = { menu = null; onJs("QO.font('$f')") })
+                                }
+                            }
+                        }
+                        Box {
+                            TextChip(stringResource(R.string.font_size), enabled = !moveMode) { menu = "size" }
+                            DropdownMenu(expanded = menu == "size", onDismissRequest = { menu = null }) {
+                                fontSizes.forEach { z -> DropdownMenuItem(text = { Text("$z") }, onClick = { menu = null; onJs("QO.sizeTo($z)") }) }
+                            }
+                        }
+                    }
                     Tool(Icons.Rounded.FormatBold, enabled = !moveMode) { onJs("QO.cmd('bold')") }
                     Tool(Icons.Rounded.FormatItalic, enabled = !moveMode) { onJs("QO.cmd('italic')") }
                     Tool(Icons.Rounded.FormatUnderlined, enabled = !moveMode) { onJs("QO.cmd('underline')") }
@@ -615,15 +855,15 @@ private fun EditToolbar(
                     Tool(Icons.Rounded.TextDecrease, enabled = !moveMode) { onJs("QO.size(-2)") }
                     Tool(Icons.Rounded.TextIncrease, enabled = !moveMode) { onJs("QO.size(2)") }
                     Box {
-                        Tool(Icons.Rounded.FormatColorText, enabled = !moveMode) { colorMenu = true }
-                        DropdownMenu(expanded = colorMenu, onDismissRequest = { colorMenu = false }) {
-                            Swatches(textColors, stringResource(R.string.text_color)) { c -> colorMenu = false; onJs("QO.cmd('foreColor','$c')") }
+                        Tool(Icons.Rounded.FormatColorText, enabled = !moveMode) { menu = "color" }
+                        DropdownMenu(expanded = menu == "color", onDismissRequest = { menu = null }) {
+                            Swatches(textColors, stringResource(R.string.text_color)) { c -> menu = null; onJs("QO.cmd('foreColor','$c')") }
                         }
                     }
                     Box {
-                        Tool(Icons.Rounded.FormatColorFill, enabled = !moveMode) { markMenu = true }
-                        DropdownMenu(expanded = markMenu, onDismissRequest = { markMenu = false }) {
-                            Swatches(markColors, stringResource(R.string.highlight_color)) { c -> markMenu = false; onJs("QO.cmd('hiliteColor','$c')") }
+                        Tool(Icons.Rounded.FormatColorFill, enabled = !moveMode) { menu = "mark" }
+                        DropdownMenu(expanded = menu == "mark", onDismissRequest = { menu = null }) {
+                            Swatches(markColors, stringResource(R.string.highlight_color)) { c -> menu = null; onJs("QO.cmd('hiliteColor','$c')") }
                         }
                     }
                     Sep()
@@ -631,6 +871,37 @@ private fun EditToolbar(
                     Tool(Icons.Rounded.FormatAlignCenter, enabled = !moveMode) { onJs("QO.cmd('justifyCenter')") }
                     Tool(Icons.AutoMirrored.Rounded.FormatAlignRight, enabled = !moveMode) { onJs("QO.cmd('justifyRight')") }
                     Tool(Icons.Rounded.FormatAlignJustify, enabled = !moveMode) { onJs("QO.cmd('justifyFull')") }
+                    if (word) {
+                        Sep()
+                        Tool(Icons.AutoMirrored.Rounded.FormatListBulleted, label = stringResource(R.string.bullets)) { onJs("QO.list('bullet')") }
+                        Tool(Icons.Rounded.FormatListNumbered, label = stringResource(R.string.numbering)) { onJs("QO.list('number')") }
+                        Tool(Icons.AutoMirrored.Rounded.FormatIndentDecrease, label = stringResource(R.string.indent_less)) { onJs("QO.indent(-1)") }
+                        Tool(Icons.AutoMirrored.Rounded.FormatIndentIncrease, label = stringResource(R.string.indent_more)) { onJs("QO.indent(1)") }
+                    }
+                }
+                if (word && t == 1) {
+                    LabeledTool(Icons.Rounded.TableChart, stringResource(R.string.insert_table)) { onDialog("table") }
+                    LabeledTool(Icons.Rounded.Image, stringResource(R.string.insert_image)) { onImage() }
+                    LabeledTool(Icons.Rounded.HorizontalRule, stringResource(R.string.page_break)) { onJs("QO.insPB()") }
+                }
+                if (word && t == 2) {
+                    Box {
+                        LabeledTool(Icons.Rounded.FormatLineSpacing, stringResource(R.string.line_spacing)) { menu = "ls" }
+                        DropdownMenu(expanded = menu == "ls", onDismissRequest = { menu = null }) {
+                            listOf(1.0, 1.15, 1.5, 2.0, 2.5).forEach { x -> DropdownMenuItem(text = { Text("$x") }, onClick = { menu = null; onJs("QO.spacing($x)") }) }
+                        }
+                    }
+                    Box {
+                        LabeledTool(Icons.Rounded.VerticalAlignBottom, stringResource(R.string.para_after)) { menu = "sa" }
+                        DropdownMenu(expanded = menu == "sa", onDismissRequest = { menu = null }) {
+                            listOf(0, 6, 12, 18, 24).forEach { x -> DropdownMenuItem(text = { Text("$x pt") }, onClick = { menu = null; onJs("QO.after($x)") }) }
+                        }
+                    }
+                    LabeledTool(Icons.Rounded.Description, stringResource(R.string.page_setup)) { onDialog("page") }
+                }
+                if (word && t == 3) {
+                    LabeledTool(Icons.Rounded.FindReplace, stringResource(R.string.find_replace)) { onDialog("find") }
+                    LabeledTool(Icons.Rounded.Tag, stringResource(R.string.word_count)) { onDialog("count") }
                 }
                 if (kind == Fmt.PPTX) {
                     Sep()
@@ -643,6 +914,137 @@ private fun EditToolbar(
             }
         }
     }
+}
+
+@Composable
+private fun TextChip(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(
+        "$text ▾",
+        style = MaterialTheme.typography.labelLarge,
+        color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        modifier = Modifier
+            .padding(horizontal = 2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+private fun LabeledTool(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    }
+}
+
+@Composable
+private fun TableDialog(onDismiss: () -> Unit, onOk: (Int, Int) -> Unit) {
+    var rows by remember { mutableIntStateOf(3) }
+    var cols by remember { mutableIntStateOf(3) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.insert_table)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Stepper(stringResource(R.string.table_rows), rows, 1..50) { rows = it }
+                Stepper(stringResource(R.string.table_cols), cols, 1..10) { cols = it }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onOk(rows, cols) }) { Text(stringResource(R.string.apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+private fun Stepper(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        IconButton(onClick = { onChange((value - 1).coerceIn(range)) }) { Icon(Icons.Rounded.Remove, null) }
+        Text("$value", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp), textAlign = TextAlign.Center)
+        IconButton(onClick = { onChange((value + 1).coerceIn(range)) }) { Icon(Icons.Rounded.Add, null) }
+    }
+}
+
+@Composable
+private fun FindReplaceDialog(onDismiss: () -> Unit, onReplace: (String, String, Boolean) -> Unit) {
+    var f by rememberSaveable { mutableStateOf("") }
+    var r by rememberSaveable { mutableStateOf("") }
+    var mc by rememberSaveable { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.find_replace)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(f, { f = it }, label = { Text(stringResource(R.string.find_what)) }, singleLine = true)
+                OutlinedTextField(r, { r = it }, label = { Text(stringResource(R.string.replace_with)) }, singleLine = true)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { mc = !mc }) {
+                    androidx.compose.material3.Checkbox(mc, { mc = it })
+                    Text(stringResource(R.string.match_case))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onReplace(f, r, mc) }, enabled = f.isNotEmpty()) { Text(stringResource(R.string.replace_all)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+@Composable
+private fun StatsDialog(json: String?, onDismiss: () -> Unit) {
+    val o = try { Json.parseToJsonElement(json ?: "{}") as? kotlinx.serialization.json.JsonObject } catch (_: Exception) { null }
+    fun v(k: String) = (o?.get(k) as? JsonPrimitive)?.contentOrNull ?: "0"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.word_count)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(R.string.wc_words to "words", R.string.wc_chars to "chars", R.string.wc_nospace to "nospace", R.string.wc_paras to "paras").forEach { (l, k) ->
+                    Row { Text(stringResource(l), Modifier.weight(1f)); Text(v(k), style = MaterialTheme.typography.titleMedium) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+    )
+}
+
+@Composable
+private fun PageSetupDialog(onDismiss: () -> Unit, onOk: (Boolean, Double, Boolean, String) -> Unit) {
+    var land by rememberSaveable { mutableStateOf(false) }
+    var margin by rememberSaveable { mutableIntStateOf(1) }
+    var nums by rememberSaveable { mutableStateOf(false) }
+    var header by rememberSaveable { mutableStateOf("") }
+    val margins = listOf(36.0 to R.string.margin_narrow, 54.0 to R.string.margin_normal, 72.0 to R.string.margin_wide)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.page_setup)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.FilterChip(!land, { land = false }, label = { Text(stringResource(R.string.portrait)) })
+                    androidx.compose.material3.FilterChip(land, { land = true }, label = { Text(stringResource(R.string.landscape)) })
+                }
+                Text(stringResource(R.string.margins), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    margins.forEachIndexed { i, (_, l) -> androidx.compose.material3.FilterChip(margin == i, { margin = i }, label = { Text(stringResource(l)) }) }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { nums = !nums }) {
+                    androidx.compose.material3.Checkbox(nums, { nums = it })
+                    Text(stringResource(R.string.page_numbers))
+                }
+                OutlinedTextField(header, { header = it }, label = { Text(stringResource(R.string.header_text)) }, singleLine = true)
+                Text(stringResource(R.string.page_setup_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onOk(land, margins[margin].first, nums, header) }) { Text(stringResource(R.string.apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 @Composable

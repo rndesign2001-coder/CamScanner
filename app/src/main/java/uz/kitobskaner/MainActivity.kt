@@ -62,7 +62,7 @@ object Routes {
     fun result(path: String) = "result?path=" + Routes.enc(path)
     fun compress(path: String? = null) = "compress" + (path?.let { "?path=" + Routes.enc(it) } ?: "")
     fun convert(target: String? = null) = "convert" + (target?.let { "?target=$it" } ?: "")
-    fun doc(uri: Uri) = "doc?uri=" + Routes.enc(uri.toString())
+    fun doc(uri: Uri, edit: Boolean = false) = "doc?uri=" + Routes.enc(uri.toString()) + if (edit) "&edit=1" else ""
     fun place(uri: Uri) = "sign/place?uri=" + Routes.enc(uri.toString())
 }
 
@@ -123,6 +123,14 @@ class MainActivity : ComponentActivity() {
                             onCompress = { nav.navigate(Routes.compress()) },
                             onConvert = { nav.navigate(Routes.convert(it)) },
                             onOpenDoc = { nav.navigate(Routes.doc(it)) },
+                            onNewDoc = { kind ->
+                                // bo'sh hujjat "Fayllar" bo'limida yaratiladi va tahrirlash rejimida ochiladi
+                                val ex = (application as App).exporter
+                                val f = ex.uniqueFile(ex.safeName(getString(R.string.new_doc_name)), kind)
+                                f.writeBytes(uz.kitobskaner.office.OfficeEditor.newDocx())
+                                ex.refreshFiles()
+                                nav.navigate(Routes.doc(Uri.fromFile(f), edit = true))
+                            },
                             onSign = { nav.navigate("sign") },
                             onBookCam = { nav.navigate("bookcam") },
                             onPdfOp = { nav.navigate("pdfops/$it") },
@@ -232,8 +240,11 @@ class MainActivity : ComponentActivity() {
                         PlaceScreen(src = u, onBack = { nav.popBackStack() }, onDone = { f -> nav.navigate(Routes.result(f.absolutePath)) })
                     }
                     composable(
-                        "doc?uri={uri}",
-                        arguments = listOf(navArgument("uri") { type = NavType.StringType; defaultValue = "" })
+                        "doc?uri={uri}&edit={edit}",
+                        arguments = listOf(
+                            navArgument("uri") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("edit") { type = NavType.StringType; defaultValue = "" },
+                        )
                     ) {
                         val u = Uri.parse(Routes.dec(it.arguments?.getString("uri") ?: ""))
                         DocumentScreen(
@@ -242,6 +253,7 @@ class MainActivity : ComponentActivity() {
                             onOpenFile = { f -> nav.navigate(Routes.result(f.absolutePath)) },
                             onSign = { nav.navigate(Routes.place(it)) },
                             onCompress = { p -> nav.navigate(Routes.compress(p)) },
+                            startEditing = it.arguments?.getString("edit") == "1",
                         )
                     }
                     composable("settings") {
